@@ -117,12 +117,7 @@ metadata {
 }
 
 preferences {
-    section {
-            image(name: 'educationalcontent', multiple: true, images: [
-                "http://cdn.device-gse.smartthings.com/Arrival/Arrival1.jpg",
-                "http://cdn.device-gse.smartthings.com/Arrival/Arrival2.jpg"
-                ])
-        }
+    
 }
 
 // parse events into attributes
@@ -145,21 +140,20 @@ def poll() {
 def generateEvent(Map eventData) {
     //log.trace("generateEvent parsing data ${eventData}")
     try {
-        Logger("------------START OF API RESULTS DATA------------", "warn")
+        //Logger("------------START OF API RESULTS DATA------------", "warn")
         if(eventData) {
-            
-            //log.debug "results: $results"
+            log.debug "eventData: $eventData"
 
-            state.timeZone = !location?.timeZone ? eventData?.tz : null
+            //state.timeZone = !location?.timeZone ? eventData?.tz : null
             
         }
-        lastUpdatedEvent()
+        //lastUpdatedEvent()
         //log.debug "Device State Data: ${getState()}" //This will return all of the devices state data to the logs.
         return null
     } 
     catch (ex) {
         log.error "generateEvent Exception: ${ex}"
-        parent?.sendChildExceptionData("camera", ex.toString(), "generateEvent")
+        //parent?.sendChildExceptionData("camera", ex.toString(), "generateEvent")
     }
 }
 
@@ -250,4 +244,30 @@ private def logWriter(value) {
     if (state.showLogging) {
         log.debug "${value}"
     }	
+}
+
+def Logger(msg, type) {
+    if(msg && type) {
+        switch(type) {
+            case "debug":
+                log.debug "${msg}"
+                break
+            case "info":
+                log.info "${msg}"
+                break
+            case "trace":
+                   log.trace "${msg}"
+                break
+            case "error":
+                log.error "${msg}"
+                break
+            case "warn":
+                log.warn "${msg}"
+                break
+            default:
+                log.debug "${msg}"
+                break
+        }
+    }
+    else { log.error "Logger Error - type: ${type} | msg: ${msg}" }
 }
