@@ -62,7 +62,7 @@ def startPage() {
 def loginPage() {
     return dynamicPage(name: "loginPage", nextPage: mainPage, uninstall: false, install: false) {
         section("") {
-            href "changeLogPage", title: "", description: "${appInfoDesc()}", image: "https://dl.dropboxusercontent.com/s/56740lxra2qkqix/efergy_512.png"
+            href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png")
         }
         section("Efergy Login Page") {
             paragraph "Please enter your https://engage.efergy.com login credentials to generate you Authentication Token and install the device automatically for you."
@@ -90,21 +90,21 @@ def mainPage() {
     dynamicPage(name: "mainPage", uninstall: showUninstall, install: true) {
         if (state.efergyAuthToken) {
             section("") {
-                href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("nest_manager%402x.png", true)
+                href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png", true)
             }
             section("Efergy Hub:") { 
-                href "hubInfoPage", title:"View Hub Info", description: "Tap to view more...", image: "https://dl.dropboxusercontent.com/s/amhupeknid6osmu/St_hub.png"
-                href "readingInfoPage", title:"View Reading Data", description: "Last Reading: \n${state.readingUpdated}\n\nTap to view more...", image: "https://dl.dropboxusercontent.com/s/3wb351466vn4w99/power_meter.png"
+                href "hubInfoPage", title:"View Hub Info", description: "Tap to view more...", image: getAppImg("St_hub.png")
+                href "readingInfoPage", title:"View Reading Data", description: "Last Reading: \n${state.readingUpdated}\n\nTap to view more...", image: getAppImg("power_meter.png")
             }
             
             section("Preferences:") {
-                href "prefsPage", title: "App Preferences", description: "Tap to configure.\n\nDebug Logging: ${isDebug.toString().capitalize()}\nNotifications: ${notif.toString().capitalize()}", image: "https://dl.dropboxusercontent.com/s/2s3jvtlfrctdcsc/settings_icon.png" 
+                href "prefsPage", title: "App Preferences", description: "Tap to configure.\n\nDebug Logging: ${isDebug.toString().capitalize()}\nNotifications: ${notif.toString().capitalize()}", image: getAppImg("settings_icon.png")
             }
             
             section(" ", mobileOnly: true) {
                 //App Details and Licensing Page
                 href "infoPage", title:"App Info and Licensing", description: "Name: ${textAppName()}\nParent App: ${parent.appName()}\nCreated by: Anthony S.\n${textVersion()} (${textModified()})\nTimeZone: ${location.timeZone.ID}\nCurrency: ${getCurrency()}\n\nTap to view more...", 
-                image: "https://dl.dropboxusercontent.com/s/daakzncm7zdzc4w/efergy_128.png"
+                image: getAppImg("efergy_128.png")
             }
         }
         
@@ -121,16 +121,16 @@ def mainPage() {
 def prefsPage () {
     dynamicPage(name: "prefsPage", install: false) {
         section () {
-            paragraph "App and Locale Preferences", image: "https://dl.dropboxusercontent.com/s/2s3jvtlfrctdcsc/settings_icon.png" 
+            paragraph "App and Locale Preferences", image: getAppImg("settings_icon.png")
         }
         section("Currency Selection:"){	
                input(name: "currencySym", type: "enum", title: "Select your Currency Symbol", options: ["\$", "£", "€"], defaultValue: "\$", submitOnChange: true, 
-                   image: "https://dl.dropboxusercontent.com/s/7it48iosv1mzcl1/currency_icon.png")
+                   image: getAppImg("currency_icon.png"))
                state.currencySym = currencySym
         }
         
         section("Notifications:"){	
-            input("recipients", "contact", title: "Send notifications to", required: false, submitOnChange: true, image: "https://dl.dropboxusercontent.com/s/dbpk2ucn2huvj6f/notification_icon.png") {
+            input("recipients", "contact", title: "Send notifications to", required: false, submitOnChange: true, image: getAppImg("notification_icon.png")) {
                 input "phone", "phone", title: "Warn with text message (optional)", description: "Phone Number", required: false, submitOnChange: true
             }
             if(recipients) { 
@@ -156,7 +156,7 @@ def prefsPage () {
         section("Debug Logging:"){
             paragraph "This can help you when you are having issues with data not updating\n** This option generates alot of Log Entries!!! Only enable for troubleshooting **"
             paragraph "FYI... Enabling this also enables logging in the Child Device as well"
-            input "showLogging", "bool", title: "Enable Debug Logging", required: false, displayDuringSetup: false, defaultValue: false, submitOnChange: true, image: "https://dl.dropboxusercontent.com/s/nsxve4ciehlk3op/log_icon.png"
+            input "showLogging", "bool", title: "Enable Debug Logging", required: false, displayDuringSetup: false, defaultValue: false, submitOnChange: true, image: getAppImg("log_icon.png")
             if(showLogging && !state.showLogging) { 
                    state.showLogging = true
                    log.info "Debug Logging Enabled!!!"
@@ -211,12 +211,12 @@ def changeLogPage () {
 def infoPage () {
     dynamicPage(name: "infoPage", install: false) {
         section() { 
-            paragraph "App Details and Licensing", image: "https://dl.dropboxusercontent.com/s/y2lcy6iho0dpsp5/info_icon.png"
+            paragraph "App Details and Licensing", image: getAppImg("info_icon.png")
         }
         
         section("About This App:") {
             paragraph "Name: ${textAppName()}\nCreated by: Anthony S.\n${textVersion()}\n${textModified()}\nGithub: @tonesto7\n\n${textDesc()}", 
-                image: "https://dl.dropboxusercontent.com/s/daakzncm7zdzc4w/efergy_128.png"
+                image: getAppImg("efergy_128.png")
         }
         
         section("App Revision History:") {
@@ -763,6 +763,8 @@ private def logWriter(value) {
         log.debug "${value}"
     }	
 }
+
+def getAppImg(imgName, on = null) 	{ return "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/images/$imgName" }
 
 ///////////////////////////////////////////////////////////////////////////////
 /******************************************************************************
