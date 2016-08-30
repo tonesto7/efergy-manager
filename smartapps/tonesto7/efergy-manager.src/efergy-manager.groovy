@@ -26,12 +26,12 @@ definition(
     Add offline Hub handling to verify that the hub is online instead of generating errors.
 */
 
-def appVersion() { "3.0.0" }
-def appVerDate() { "6-24-2016" }
+def appVersion() { "3.0.1" }
+def appVerDate() { "8-30-2016" }
 def appVerInfo() {
     def str = ""
 
-    str += "V3.0.0 (August 29th, 2016):"
+    str += "V3.0.0 (August 30th, 2016):"
     str += "\n▔▔▔▔▔▔▔▔▔▔▔"
     str += "\n • Alpha re-write."
 
@@ -43,6 +43,7 @@ preferences {
     page(name: "loginPage")
     page(name: "mainPage")
     page(name: "prefsPage")
+    page(name: "notifPrefPage")
     page(name: "hubInfoPage", content: "hubInfoPage", refreshTimeout:5)
     page(name: "readingInfoPage", content: "readingInfoPage", refreshTimeout:5)
     page(name: "infoPage")
@@ -53,6 +54,7 @@ preferences {
 def startPage() {
     if(!atomicState.appInstalled) { atomicState.appInstalled = false }
     if(!atomicState?.showLogging) { atomicState?.showLogging = false }
+    if(!atomicState?.cleanupComplete) { atomicState?.cleanupComplete = false }
     if (location?.timeZone?.ID.contains("America/")) { atomicState.currencySym = "\$" }
     if (atomicState.efergyAuthToken) { return mainPage() }
     else { return loginPage() }
@@ -83,6 +85,7 @@ def mainPage() {
     if (!atomicState.currencySym) { atomicState.currencySym = "\$" }
     getCurrency()
     runTest()
+    updateWebStuff(true)
     def isDebug = settings?.showLogging ? true : false
     def notif = recipients ? true : false
     if (atomicState.loginStatus != "ok") { return loginPage() }
@@ -145,14 +148,10 @@ def prefsPage () {
         }
 
         // Set Notification Recipients
-        if (location.contactBookEnabled && recipients) {
-            section("Notify Values...", hidden: true, hideable: true) {
-                input "notifyAfterMin", "number", title: "Send Notification after (X) minutes of no updates", required: false, defaultValue: "60", submitOnChange: true
-                   input "notifyDelayMin", "number", title: "Only Send Notification every (x) minutes...", required: false, defaultValue: "50", submitOnChange: true
-                   atomicState.notifyAfterMin = notifyAfterMin
-                   atomicState.notifyDelayMin = notifyDelayMin
-            }
-        }
+        section("Notifications:") {
+			href "notifPrefPage", title: "Notifications", description: (getAppNotifConfDesc() ? "${getAppNotifConfDesc()}\n\nTap to modify..." : "Tap to configure..."), state: (getAppNotifConfDesc() ? "complete" : null),
+					image: getAppImg("notification_icon.png")
+		}
 
         section("Debug Logging:"){
             paragraph "This can help you when you are having issues with data not updating\n** This option generates alot of Log Entries!!! Only enable for troubleshooting **"
@@ -169,6 +168,81 @@ def prefsPage () {
         }
         refresh()
     }
+}
+
+def notifPrefPage() {
+	dynamicPage(name: "notifPrefPage", install: false) {
+		def sectDesc = !location.contactBookEnabled ? "Enable push notifications below..." : "Select People or Devices to Receive Notifications..."
+		section(sectDesc) {
+			if(!location.contactBookEnabled) {
+				input(name: "usePush", type: "bool", title: "Send Push Notitifications", required: false, defaultValue: false, submitOnChange: true, image: getAppImg("notification_icon.png"))
+			} else {
+				input(name: "recipients", type: "contact", title: "Send notifications to", required: false, submitOnChange: true, image: getAppImg("recipient_icon.png")) {
+					input ("phone", "phone", title: "Phone Number to send SMS to...", required: false, submitOnChange: true, image: getAppImg("notification_icon.png"))
+				}
+			}
+		}
+
+		if (settings?.recipients || settings?.phone || settings?.usePush) {
+			if(settings?.recipients && !atomicState?.pushTested) {
+				sendMsg("Info", "Push Notification Test Successful... Notifications have been Enabled for ${textAppName()}")
+				atomicState.pushTested = true
+			} else { atomicState.pushTested = true }
+
+			section(title: "Time Restrictions") {
+				href "setNotificationTimePage", title: "Silence Notifications...", description: (getNotifSchedDesc() ?: "Tap to configure..."), state: (getNotifSchedDesc() ? "complete" : null), image: getAppImg("quiet_time_icon.png")
+			}
+			section("Missed Poll Notification:") {
+				input (name: "sendMissedPollMsg", type: "bool", title: "Send Missed Poll Messages?", defaultValue: true, submitOnChange: true, image: getAppImg("late_icon.png"))
+				if(sendMissedPollMsg == null || sendMissedPollMsg) {
+					def misPollNotifyWaitValDesc = !misPollNotifyWaitVal ? "Default: 15 Minutes" : misPollNotifyWaitVal
+					input (name: "misPollNotifyWaitVal", type: "enum", title: "Time Past the missed Poll?", required: false, defaultValue: 900, metadata: [values:notifValEnum()], submitOnChange: true)
+					if(misPollNotifyWaitVal) {
+						atomicState.misPollNotifyWaitVal = !misPollNotifyWaitVal ? 900 : misPollNotifyWaitVal.toInteger()
+						if (misPollNotifyWaitVal.toInteger() == 1000000) {
+							input (name: "misPollNotifyWaitValCust", type: "number", title: "Custom Missed Poll Value in Seconds", range: "60..86400", required: false, defaultValue: 900, submitOnChange: true)
+							if(misPollNotifyWaitValCust) { atomicState?.misPollNotifyWaitVal = misPollNotifyWaitValCust ? misPollNotifyWaitValCust.toInteger() : 900 }
+						}
+					} else { atomicState.misPollNotifyWaitVal = !misPollNotifyWaitVal ? 900 : misPollNotifyWaitVal.toInteger() }
+
+					def misPollNotifyMsgWaitValDesc = !misPollNotifyMsgWaitVal ? "Default: 1 Hour" : misPollNotifyMsgWaitVal
+					input (name: "misPollNotifyMsgWaitVal", type: "enum", title: "Delay before sending again?", required: false, defaultValue: 3600, metadata: [values:notifValEnum()], submitOnChange: true)
+					if(misPollNotifyMsgWaitVal) {
+						atomicState.misPollNotifyMsgWaitVal = !misPollNotifyMsgWaitVal ? 3600 : misPollNotifyMsgWaitVal.toInteger()
+						if (misPollNotifyMsgWaitVal.toInteger() == 1000000) {
+							input (name: "misPollNotifyMsgWaitValCust", type: "number", title: "Custom Msg Wait Value in Seconds", range: "60..86400", required: false, defaultValue: 3600, submitOnChange: true)
+							if(misPollNotifyMsgWaitValCust) { atomicState.misPollNotifyMsgWaitVal = misPollNotifyMsgWaitValCust ? misPollNotifyMsgWaitValCust.toInteger() : 3600 }
+						}
+					} else { atomicState.misPollNotifyMsgWaitVal = !misPollNotifyMsgWaitVal ? 3600 : misPollNotifyMsgWaitVal.toInteger() }
+				}
+			}
+			section("App and Device Updates:") {
+				input (name: "sendAppUpdateMsg", type: "bool", title: "Send for Updates...", defaultValue: true, submitOnChange: true, image: getAppImg("update_icon.png"))
+				if(sendMissedPollMsg == null || sendAppUpdateMsg) {
+					def updNotifyWaitValDesc = !updNotifyWaitVal ? "Default: 2 Hours" : updNotifyWaitVal
+					input (name: "updNotifyWaitVal", type: "enum", title: "Send reminders every?", required: false, defaultValue: 7200, metadata: [values:notifValEnum()], submitOnChange: true)
+					if(updNotifyWaitVal) {
+						atomicState.updNotifyWaitVal = !updNotifyWaitVal ? 7200 : updNotifyWaitVal.toInteger()
+						if (updNotifyWaitVal.toInteger() == 1000000) {
+							input (name: "updNotifyWaitValCust", type: "number", title: "Custom Missed Poll Value in Seconds", range: "30..86400", required: false, defaultValue: 7200, submitOnChange: true)
+							if(updNotifyWaitValCust) { atomicState.updNotifyWaitVal = updNotifyWaitValCust ? updNotifyWaitValCust.toInteger() : 7200 }
+						}
+					} else { atomicState.updNotifyWaitVal = !updNotifyWaitVal ? 7200 : updNotifyWaitVal.toInteger() }
+				}
+			}
+		} else { atomicState.pushTested = false }
+	}
+}
+
+def getAppNotifConfDesc() {
+	def str = ""
+	str += pushStatus() ? "Notifications:" : ""
+	str += (pushStatus() && settings?.recipients) ? "\n • Contacts: (${settings?.recipients?.size()})" : ""
+	str += (pushStatus() && settings?.usePush) ? "\n • Push Messages: Enabled" : ""
+	str += (pushStatus() && sms) ? "\n • SMS: (${sms?.size()})" : ""
+	str += (pushStatus() && settings?.phone) ? "\n • SMS: (${settings?.phone?.size()})" : ""
+	str += (pushStatus() && getNotifSchedDesc()) ? "\n${getNotifSchedDesc()}" : ""
+	return pushStatus() ? "${str}" : null
 }
 
 def readingInfoPage () {
@@ -283,11 +357,11 @@ private evtSubscribe() {
 private addRemoveDevices(uninst=false) {
     try {
         def devsInUse = []
-        def dni = "Efergy Engage - DEV|" + atomicState?.hubData?.hubMacAddr
+        def dni = "Efergy Engage|" + atomicState?.hubData?.hubMacAddr
         def d = getChildDevice(dni)
         if(!uninst) {
             if(!d) {
-                d = addChildDevice("tonesto7", "Efergy Engage Elite - DEV", dni, null, [name:"Efergy Engage Elite - DEV", label: "Efergy Engage Elite - DEV", completedSetup: true])
+                d = addChildDevice("tonesto7", "Efergy Engage Elite", dni, null, [name:"Efergy Engage Elite", label: "Efergy Engage Elite", completedSetup: true])
                 d.take()
                 Logger("Successfully Created Child Device: ${d.displayName} (${dni})")
                 devsInUse += dni
@@ -332,6 +406,7 @@ def updateDeviceData() {
                         "tz":getTimeZone()
                 ]
                 devs?.each { dev ->
+                    atomicState?.devVer = it?.devVer() ?: ""
                     dev?.generateEvent(devData) //parse received message from parent
                 }
             } else {
@@ -350,7 +425,7 @@ def refresh() {
     getLastRefreshSec()
     if (atomicState?.efergyAuthToken) {
         if (atomicState?.timeSinceRfsh > 30) {
-            Logger("","info")
+            LogAction("","info", false)
             log.info "Refreshing Efergy Energy data from engage.efergy.com"
             getDayMonth()
             getApiData()
@@ -358,11 +433,16 @@ def refresh() {
             if (recipients) { checkForNotify() }
 
             updateDeviceData()
-            Logger("", "info")
+            LogAction("", "info", false)
             runIn(27, "refresh")
         }
         else if (atomicState?.timeSinceRfsh > 360 || !atomicState?.timeSinceRfsh) { checkSchedule() }
     }
+    if(!atomicState?.cleanupComplete && (cleanupVer() != atomicState?.cleanupVer)) {
+        runIn(15, "stateCleanup", [overwrite: false])
+    }
+    updateWebStuff()
+    //notificationCheck() //Checks if a notification needs to be sent for a specific event
 }
 
 //Create Refresh schedule to refresh device data (Triggers roughly every 30 seconds)
@@ -378,7 +458,7 @@ private addSchedule() {
 }
 
 def checkSchedule() {
-    Logger("Check Schedule has ran!")
+    LogAction("Check Schedule has ran!","trace", false)
     getLastRefreshSec()
     def timeSince = atomicState.timeSinceRfsh ?: null
     if (timeSince > 360) {
@@ -394,6 +474,41 @@ def checkSchedule() {
         return
     }
 }
+
+def apiIssues() {
+	def result = state?.apiIssuesList.toString().contains("true") ? true : false
+	if(result) {
+		LogAction("Nest API Issues Detected... (${getDtNow()})", "warn", true)
+	}
+	return result
+}
+
+def apiIssueEvent(issue, cmd = null) {
+	def list = state?.apiIssuesList ?: []
+	//log.debug "listIn: $list (${list?.size()})"
+	def listSize = 3
+	if(list?.size() < listSize) {
+		list.push(issue)
+	}
+	else if (list?.size() > listSize) {
+		def nSz = (list?.size()-listSize) + 1
+		//log.debug ">listSize: ($nSz)"
+		def nList = list?.drop(nSz)
+		//log.debug "nListIn: $list"
+		nList?.push(issue)
+		//log.debug "nListOut: $nList"
+		list = nList
+	}
+	else if (list?.size() == listSize) {
+		def nList = list?.drop(1)
+		nList?.push(issue)
+		list = nList
+	}
+
+	if(list) { state?.apiIssuesList = list }
+	//log.debug "listOut: $list"
+}
+
 
 // Get Efergy Authentication Token
 private def getAuthToken() {
@@ -467,18 +582,18 @@ def checkForNotify() {
     if ((!atomicState?.lastNotifySeconds && !atomicState?.lastNotified) || (!atomicState?.lastNotifySeconds || !atomicState?.lastNotified)) {
         atomicState.lastNotifySeconds = 0
         atomicState.lastNotified = "Mon Jan 01 00:00:00 2000"
-        Logger("Error getting last Notified: ${atomicState?.lastNotified} - (${atomicState?.lastNotifySeconds} seconds ago)")
+        LogAction("Error getting last Notified: ${atomicState?.lastNotified} - (${atomicState?.lastNotifySeconds} seconds ago)", "error", true)
         return
     }
 
     else if (atomicState?.lastNotifySeconds && atomicState?.lastNotified) {
         atomicState.lastNotifySeconds = getTimeDiffSeconds(atomicState?.lastNotified)
-        Logger("Last Notified: ${atomicState?.lastNotified} - (${atomicState?.lastNotifySeconds} seconds ago)")
+        LogAction("Last Notified: ${atomicState?.lastNotified} - (${atomicState?.lastNotifySeconds} seconds ago)", "info", true)
     }
 
     if (timeSince && timeSince > delayVal) {
         if (atomicState?.lastNotifySeconds < notifyVal){
-            Logger("Notification was sent ${atomicState?.lastNotifySeconds} seconds ago.  Waiting till after ${notifyVal} seconds before sending Notification again!")
+            LogAction("Notification was sent ${atomicState?.lastNotifySeconds} seconds ago.  Waiting till after ${notifyVal} seconds before sending Notification again!", "info", true)
             return
         }
         else {
@@ -486,6 +601,46 @@ def checkForNotify() {
             notifyOnNoUpdate(timeSince)
         }
     }
+}
+
+/************************************************************************************************
+|								Push Notification Functions										|
+*************************************************************************************************/
+def pushStatus() { return (settings?.recipients || settings?.phone || settings?.usePush) ? (settings?.usePush ? "Push Enabled" : "Enabled") : null }
+def getLastMsgSec() { return !atomicState?.lastMsgDt ? 100000 : getTimeDiffSeconds(atomicState?.lastMsgDt).toInteger() }
+def getLastUpdMsgSec() { return !atomicState?.lastUpdMsgDt ? 100000 : getTimeDiffSeconds(atomicState?.lastUpdMsgDt).toInteger() }
+def getLastMisPollMsgSec() { return !atomicState?.lastMisPollMsgDt ? 100000 : getTimeDiffSeconds(atomicState?.lastMisPollMsgDt).toInteger() }
+def getRecipientsSize() { return !settings.recipients ? 0 : settings?.recipients.size() }
+
+def getOk2Notify() { return (daysOk(settings?."${getAutoType()}quietDays") && notificationTimeOk() && modesOk(settings?."${getAutoType()}quietModes")) }
+def isMissedPoll() { return (getLastDevicePollSec() > atomicState?.misPollNotifyWaitVal.toInteger()) ? true : false }
+
+def notificationCheck() {
+	if((settings?.recipients || settings?.usePush) && getOk2Notify()) {
+		if (sendMissedPollMsg) { missedPollNotify() }
+		if (sendAppUpdateMsg && !appDevType()) { appUpdateNotify() }
+	}
+}
+
+def missedPollNotify() {
+	if(isMissedPoll()) {
+		if(getOk2Notify() && (getLastMisPollMsgSec() > atomicState?.misPollNotifyMsgWaitVal.toInteger())) {
+			sendMsg("Warning", "${app.name} has not refreshed data in the last (${getLastDevicePollSec()}) seconds.  Please try refreshing manually.")
+			atomicState?.lastMisPollMsgDt = getDtNow()
+		}
+	}
+}
+
+def appUpdateNotify() {
+	def appUpd = isAppUpdateAvail()
+	def devUpd = isProtUpdateAvail()
+	if((appUpd || devUpd) && (getLastUpdMsgSec() > atomicState?.updNotifyWaitVal.toInteger())) {
+		def str = ""
+		str += !appUpd ? "" : "\nManager App: v${atomicState?.appData?.updater?.versions?.app?.ver?.toString()}"
+		str += !devUpd ? "" : "\nElite Device: v${atomicState?.appData?.updater?.versions?.dev?.ver?.toString()}"
+		sendMsg("Info", "Efergy Manager Update(s) are Available:${str}...  \n\nPlease visit the IDE to Update your code...")
+		atomicState?.lastUpdMsgDt = getDtNow()
+	}
 }
 
 //Sends the actual Push Notification
@@ -498,21 +653,115 @@ def notifyOnNoUpdate(Integer timeSince) {
     sendNotify(message)
 }
 
-private def sendNotify(msg) {
-    if (location.contactBookEnabled && recipients) {
-        sendNotificationToContacts(msg, recipients)
-    } else {
-        Logger("contact book not enabled")
-        if (phone) {
-            sendSms(phone, msg)
-        }
-    }
+def sendMsg(msgType, msg, people = null, sms = null, push = null, brdcast = null) {
+	try {
+		if(!getOk2Notify()) {
+			LogAction("No Notifications will be sent during Quiet Time...", "info", true)
+		} else {
+			def newMsg = "${msgType}: ${msg}"
+			if(!brdcast) {
+				def who = people ? people : settings?.recipients
+				if (location.contactBookEnabled) {
+					if(who) {
+						sendNotificationToContacts(newMsg, who)
+						atomicState?.lastMsg = newMsg
+						atomicState?.lastMsgDt = getDtNow()
+						LogAction("Push Message Sent: ${atomicState?.lastMsgDt}", "debug", true)
+					}
+				} else {
+					LogAction("ContactBook is NOT Enabled on your SmartThings Account...", "warn", true)
+					if (push) {
+						sendPush(newMsg)
+						atomicState?.lastMsg = newMsg
+						atomicState?.lastMsgDt = getDtNow()
+						LogAction("Push Message Sent: ${atomicState?.lastMsgDt}", "debug", true)
+					}
+					else if (sms) {
+						sendSms(sms, newMsg)
+						atomicState?.lastMsg = newMsg
+						atomicState?.lastMsgDt = getDtNow()
+						LogAction("SMS Message Sent: ${atomicState?.lastMsgDt}", "debug", true)
+					}
+				}
+			} else {
+				sendPushMessage(newMsg)
+				LogAction("Broadcast Message Sent: ${newMsg} - ${atomicState?.lastMsgDt}", "debug", true)
+			}
+		}
+	} catch (ex) {
+		log.error "sendMsg Exception:", ex
+	}
+}
+
+def getLastWebUpdSec() { return !atomicState?.lastWebUpdDt ? 100000 : getTimeDiffSeconds(atomicState?.lastWebUpdDt).toInteger() }
+
+def updateWebStuff(now = false) {
+	//log.trace "updateWebStuff..."
+	if (!atomicState?.appData || (getLastWebUpdSec() > (3600*4))) {
+		if(now) {
+			getWebFileData()
+		} else {
+			if(canSchedule()) { runIn(45, "getWebFileData", [overwrite: true]) }  //This reads a JSON file from a web server with timing values and version numbers
+		}
+	}
+}
+
+def getWebFileData() {
+	//log.trace "getWebFileData..."
+	def params = [ uri: "https://raw.githubusercontent.com/tonesto7/efergy-manager/${gitBranch()}/Data/appParams.json", contentType: 'application/json' ]
+	def result = false
+	try {
+		httpGet(params) { resp ->
+			if(resp.data) {
+				LogAction("Getting Latest Data from appParams.json File...", "info", true)
+				atomicState?.appData = resp?.data
+				atomicState?.lastWebUpdDt = getDtNow()
+				updateHandler()
+				broadcastCheck()
+			}
+			LogTrace("getWebFileData Resp: ${resp?.data}")
+			result = true
+		}
+	}
+	catch (ex) {
+		if(ex instanceof groovyx.net.http.HttpResponseException) {
+			   log.warn  "appParams.json file not found..."
+		} else {
+			log.error "getWebFileData Exception:", ex
+		}
+	}
+	return result
+}
+
+def broadcastCheck() {
+	if(atomicState?.isInstalled && atomicState?.appData.broadcast) {
+		if(atomicState?.appData?.broadcast?.msgId != null && atomicState?.lastBroadcastId != atomicState?.appData?.broadcast?.msgId) {
+			sendMsg(atomicState?.appData?.broadcast?.type.toString().capitalize(), atomicState?.appData?.broadcast?.message.toString(), null, null, null, true)
+			atomicState?.lastBroadcastId = atomicState?.appData?.broadcast?.msgId
+		}
+	}
+}
+
+def updateHandler() {
+	//log.trace "updateHandler..."
+	if(atomicState?.isInstalled) {
+		if(atomicState?.appData?.updater?.updateType.toString() == "critical" && atomicState?.lastCritUpdateInfo?.ver.toInteger() != atomicState?.appData?.updater?.updateVer.toInteger()) {
+			sendMsg("Critical", "There are Critical Updates available for the Efergy Manager Application!!! Please visit the IDE and make sure to update the App and Device Code...")
+			atomicState?.lastCritUpdateInfo = ["dt":getDtNow(), "ver":atomicState?.appData?.updater?.updateVer?.toInteger()]
+		}
+		if(atomicState?.appData?.updater?.updateMsg != "" && atomicState?.appData?.updater?.updateMsg != atomicState?.lastUpdateMsg) {
+			if(getLastUpdateMsgSec() > 86400) {
+				sendMsg("Info", "${atomicState?.updater?.updateMsg}")
+				atomicState?.lastUpdateMsgDt = getDtNow()
+			}
+		}
+	}
 }
 
 def getLastRefreshSec() {
     if(atomicState?.hubData?.hubTsHuman) {
         atomicState.timeSinceRfsh = getTimeDiffSeconds(atomicState?.hubData?.hubTsHuman)
-        Logger("TimeSinceRefresh: ${atomicState.timeSinceRfsh} seconds")
+        LogAction("TimeSinceRefresh: ${atomicState.timeSinceRfsh} seconds", "info", false)
     }
     runIn(130, "getLastRefreshSec")
 }
@@ -533,7 +782,15 @@ def getTimeDiffSeconds(String startDate) {
     }
 }
 
+def isAppUpdateAvail() {
+	if(isCodeUpdateAvailable(atomicState?.appData?.updater?.versions?.app?.ver, appVersion(), "manager")) { return true }
+	return false
+}
 
+def isDevUpdateAvail() {
+	if(isCodeUpdateAvailable(atomicState?.appData?.updater?.versions?.dev?.ver, atomicState?.devVer, "dev")) { return true }
+	return false
+}
 //Matches hubType to a full name
 def getHubName(hubType) {
     def hubName = ""
@@ -558,9 +815,14 @@ def getApiData() {
 
 def runTest() {
     //log.trace "runTest..."
-    getApiData()
+    //getApiData()
 }
 
+
+def getDtNow() {
+	def now = new Date()
+	return formatDt(now)
+}
 // Get extended energy metrics
 def getUsageData() {
     try {
@@ -596,7 +858,7 @@ def getTariffData() {
             data["tariffUtility"] = tData?.tariff?.plan[0].utility.toString() ?: null
             data["tariffName"] = tData?.tariff?.plan[0].name.toString() ?: null
             data["tariffRate"] = tData?.tariff?.plan[0]?.plan[0]?.planDetail[0]?.rate ?: null
-            Logger("TariffData: ${data}", "trace")
+            LogAction("TariffData: ${data}", "trace", "debug", false)
             atomicState?.tariffData = data
         }
     }
@@ -709,6 +971,32 @@ def getTimeDiffSeconds(lastDate) {
         return 10000
     }
 }
+def cleanupVer() { return 1 }
+
+def stateCleanup() {
+    state.remove("cidType")
+    state.remove("cidUnit")
+    state.remove("energyReading")
+    state.remove("hubId")
+    state.remove("hubMacAddr")
+    state.remove("hubName")
+    state.remove("hubStatus")
+    state.remove("hubTsHuman")
+    state.remove("hubType")
+    state.remove("hubVersion")
+    state.remove("monthBudget")
+    state.remove("monthCost")
+    state.remove("monthEst")
+    state.remove("monthUsage")
+    state.remove("readingDt")
+    state.remove("readingUpdated")
+    state.remove("tariffRate")
+    state.remove("todayCost")
+    state.remove("todayUsage")
+
+    atomicState?.cleanupComplete = true
+    atomicState?.cleanupVer = cleanupVer()
+}
 
 def LogTrace(msg) {
     def trOn = advAppDebug ? true : false
@@ -716,39 +1004,36 @@ def LogTrace(msg) {
 }
 
 def LogAction(msg, type = "debug", showAlways = false) {
-    try {
-        def isDbg = parent ? ((atomicState?.showDebug || showDebug)  ? true : false) : (appDebug ? true : false)
-        if(showAlways) { Logger(msg, type) }
-
-        else if (isDbg && !showAlways) { Logger(msg, type) }
-    } catch (ex) {
-        log.error("LogAction Exception: ${ex}")
-    }
+	def isDbg = (settings?.showLogging == true) ? true : false
+	if(showAlways) { Logger(msg, type) }
+	else if (isDbg && !showAlways) { Logger(msg, type) }
 }
 
-def Logger(msg, type = "") {
-    if(msg && type && settings?.showLogging) {
-        switch(type) {
-            case "debug":
-                log.debug "${msg}"
-                break
-            case "info":
-                log.info "${msg}"
-                break
-            case "trace":
-                   log.trace "${msg}"
-                break
-            case "error":
-                log.error "${msg}"
-                break
-            case "warn":
-                log.warn "${msg}"
-                break
-            default:
-                log.debug "${msg}"
-                break
-        }
-    }
+def Logger(msg, type="debug") {
+	if(msg&&type) {
+		def labelstr = ""
+		switch(type) {
+			case "debug":
+				log.debug "${msg}"
+				break
+			case "info":
+				log.info "${msg}"
+				break
+			case "trace":
+				log.trace "${msg}"
+				break
+			case "error":
+				log.error "${msg}"
+				break
+			case "warn":
+				log.warn "${msg}"
+				break
+			default:
+				log.debug "${msg}"
+				break
+		}
+	}
+	else { log.error "Logger Error - type: ${type} | msg: ${msg}" }
 }
 
 def getAppImg(imgName, on = null) 	{ return "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/images/$imgName" }
