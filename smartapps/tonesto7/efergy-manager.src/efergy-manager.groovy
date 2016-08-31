@@ -98,9 +98,16 @@ def mainPage() {
                 href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png", true)
             }
             if(atomicState?.appInstalled) {
-                section("Efergy Hub:") {
-                    href "hubInfoPage", title:"View Hub Info", description: "Tap to view more...", image: getAppImg("St_hub.png")
-                    href "readingInfoPage", title:"View Reading Data", description: "Last Reading: \n${atomicState?.readingData?.readingUpdated}\n\nTap to view more...", image: getAppImg("power_meter.png")
+                if(atomicState?.hubData && atomicState?.readingData) {
+                    section("Efergy Hub:") {
+                        href "hubInfoPage", title:"View Hub Info", description: "Tap to view more...", image: getAppImg("St_hub.png")
+                        def rStr = ""
+                        rStr += atomicState?.readingData?.readingUpdated ? "Last Reading:\n${atomicState?.readingData?.readingUpdated}" : ""
+                        rStr += atomicState?.readingData?.powerReading ? "${atomicState?.readingData?.readingUpdated ? "\n" : ""}Power Reading: (${atomicState?.readingData?.powerReading}W)" : ""
+                        rStr += "\n\nTap to view more..."
+                        href "readingInfoPage", title:"View Energy Data", description: rStr, state: (atomicState?.readingData?.readingUpdated ? "complete" : null),
+                                image: getAppImg("power_meter.png")
+                    }
                 }
 
                 section("Preferences:") {
@@ -110,8 +117,8 @@ def mainPage() {
     				if(descStr.size() != sz) { descStr += "\n\n"; sz = descStr.size() }
     				descStr += getAppDebugDesc() ?: ""
     				if(descStr.size() != sz) { descStr += "\n\n"; sz = descStr.size() }
-    				def prefDesc = (descStr != "") ? "Tap to Modify..." : "Tap to Configure..."
-                    href "prefsPage", title: "App Preferences", description: "Tap to configure.\n\nDebug Logging: ${isDebug.toString().capitalize()}\nNotifications: ${notif.toString().capitalize()}", image: getAppImg("settings_icon.png")
+    				def prefDesc = (descStr != "") ? "${descStr}Tap to Modify..." : "Tap to Configure..."
+                    href "prefsPage", title: "Preferences", description: prefDesc, state: (descStr ? "complete" : ""), image: getAppImg("settings_icon.png")
                 }
             } else {
                 section("") {
@@ -120,7 +127,7 @@ def mainPage() {
             }
 
             section("Info") {
-                href "infoPage", title: "Help, Info and Instructions", description: "Tap to view...", image: getAppImg("info.png")
+                href "infoPage", title: "Info and Instructions", description: "Tap to view...", image: getAppImg("info.png")
             }
             section("") {
 				href "uninstallPage", title: "Uninstall this App", description: "Tap to Remove...", image: getAppImg("uninstall_icon.png")
@@ -138,13 +145,9 @@ def mainPage() {
 
 //Defines the Preference Page
 def prefsPage () {
-    dynamicPage(name: "prefsPage", install: false) {
-        section () {
-            paragraph "App and Locale Preferences", image: getAppImg("settings_icon.png")
-        }
+    dynamicPage(name: "prefsPage", title: "Application Preferences", install: false, uninstall: false) {
         section("Currency Selection:"){
-               input(name: "currencySym", type: "enum", title: "Select your Currency Symbol", options: ["\$", "£", "€"], defaultValue: "\$", submitOnChange: true,
-                   image: getAppImg("currency_icon.png"))
+               input(name: "currencySym", type: "enum", title: "Select your Currency Symbol", options: ["\$", "£", "€"], defaultValue: "\$", submitOnChange: true, image: getAppImg("currency_icon.png"))
                atomicState.currencySym = currencySym
         }
         // Set Notification Recipients
@@ -444,6 +447,58 @@ def onAppTouch(event) {
     refresh()
 }
 
+// refresh command
+def refresh() {
+    getLastRefreshSec()
+    if (atomicState?.efergyAuthToken) {
+        if (atomicState?.timeSinceRfsh > 30) {
+            LogAction("","info", false)
+            log.info "Refreshing Efergy Energy data from engage.efergy.com"
+            getDayMonth()
+            getApiData()
+
+            updateDeviceData()
+            LogAction("", "info", false)
+            runIn(27, "checkSchedule")
+        }
+        else if (atomicState?.timeSinceRfsh > 360 || !atomicState?.timeSinceRfsh) { checkSchedule() }
+    }
+    if(!atomicState?.cleanupComplete && (cleanupVer() != atomicState?.cleanupVer)) {
+        runIn(15, "stateCleanup", [overwrite: false])
+    }
+    updateWebStuff()
+    //notificationCheck() //Checks if a notification needs to be sent for a specific event
+}
+
+//Create Refresh schedule to refresh device data (Triggers roughly every 30 seconds)
+private addSchedule() {
+    //schedule("1/1 * * * * ?", "refresh") //Runs every 30 seconds to Refresh Data
+    schedule("0 0/1 * * * ?", "refresh") //Runs every 1 minute to make sure that data is accurate
+    runIn(27, "checkSchedule")
+    //runIn(130, "getLastRefreshSec")
+}
+
+private checkSchedule() {
+    LogAction("Check Schedule has ran!","trace", false)
+    getLastRefreshSec()
+    def timeSince = atomicState.timeSinceRfsh ?: null
+    if (timeSince > 360) {
+        log.warn "It has been more than 5 minutes since last refresh!!!"
+        log.debug "Scheduling Issue found... Re-initializing schedule... Data should resume refreshing in 30 seconds"
+        addSchedule()
+        return
+    }
+    else if (!timeSince) {
+        log.warn "Hub TimeStamp Value was null..."
+        log.debug "Re-initializing schedule... Data should resume refreshing in 30 seconds"
+        addSchedule()
+        return
+    }
+    else {
+        refresh()
+    }
+}
+
 //subscribes to the various location events and uses them to refresh the data if the scheduler gets stuck
 private evtSubscribe() {
     subscribe(app, onAppTouch)
@@ -470,12 +525,12 @@ private addRemoveDevices(uninst=false) {
             else {
                 LogAction("Device already created", "info", true)
             }
-            def delete
-            delete = getChildDevices().findAll { !devsInUse?.toString()?.contains(it?.deviceNetworkId) }
-    		if(delete?.size() > 0) {
-    			LogAction("Removing ${delete.size()} device...", "warn", true)
-    			delete.each { deleteChildDevice(it.deviceNetworkId) }
-    		}
+            //def delete
+            //delete = getChildDevices().findAll { !devsInUse?.toString()?.contains(it?.deviceNetworkId) }
+    		//if(delete?.size() > 0) {
+    		//	LogAction("Removing ${delete.size()} device...", "warn", true)
+    		//	delete.each { deleteChildDevice(it.deviceNetworkId) }
+    		//}
         } else {
             getChildDevices().each {
                 deleteChildDevice(it.deviceNetworkId)
@@ -497,7 +552,7 @@ def updateDeviceData() {
         if(devs?.size() > 0) {
             LogAction(" ", "trace", false)
             LogAction("--------------Sending Data to Device--------------", "trace", false)
-            if(atomicState?.usageData && atomicState?.tariffData && atomicState?.readingData && atomicState?.hubData) {
+            if(atomicState?.usageData != null && atomicState?.tariffData != null && atomicState?.readingData != null && atomicState?.hubData != null) {
                 def devData = [
                         "usageData":atomicState?.usageData,
                         "tariffData":atomicState?.tariffData,
@@ -515,66 +570,24 @@ def updateDeviceData() {
                     dev?.generateEvent(devData) //parse received message from parent
                 }
             } else {
-                log.warn("updateDeviceData:  Missing required data.  Skipping Device Update...")
+                if(!atomicState?.usageData != null) {
+                    log.warn("updateDeviceData:  Missing UsageData.  Skipping Device Update...")
+                }
+                if(!atomicState?.tariffData != null) {
+                    log.warn("updateDeviceData:  Missing TariffData.  Skipping Device Update...")
+                }
+                if(!atomicState?.readingData != null) {
+                    log.warn("updateDeviceData:  Missing ReadingData.  Skipping Device Update...")
+                }
+                if(!atomicState?.hubData != null) {
+                    log.warn("updateDeviceData:  Missing HubData.  Skipping Device Update...")
+                }
             }
         } else {
             log.warn("There aren't any devices installed.  Skipping Update...")
         }
     } catch (ex) {
         log.error "updateDeviceData exception:", ex
-    }
-}
-
-// refresh command
-def refresh() {
-    getLastRefreshSec()
-    if (atomicState?.efergyAuthToken) {
-        if (atomicState?.timeSinceRfsh > 30) {
-            LogAction("","info", false)
-            log.info "Refreshing Efergy Energy data from engage.efergy.com"
-            getDayMonth()
-            getApiData()
-
-            updateDeviceData()
-            LogAction("", "info", false)
-            runIn(27, "refresh")
-        }
-        else if (atomicState?.timeSinceRfsh > 360 || !atomicState?.timeSinceRfsh) { checkSchedule() }
-    }
-    if(!atomicState?.cleanupComplete && (cleanupVer() != atomicState?.cleanupVer)) {
-        runIn(15, "stateCleanup", [overwrite: false])
-    }
-    updateWebStuff()
-    //notificationCheck() //Checks if a notification needs to be sent for a specific event
-}
-
-//Create Refresh schedule to refresh device data (Triggers roughly every 30 seconds)
-private addSchedule() {
-    //schedule("1/1 * * * * ?", "refresh") //Runs every 30 seconds to Refresh Data
-    schedule("0 0/1 * * * ?", "refresh") //Runs every 1 minute to make sure that data is accurate
-    //runIn(30, "refresh")
-    //runIn(60, "refresh")
-    runIn(130, "getLastRefreshSec")
-    //schedule("0 0/1 * 1/1 * ? *", "getLastRefreshSec") //Runs every 1 minute to make sure that data is accurate
-    runEvery5Minutes("checkSchedule")
-    //runEvery30Minutes("checkSchedule")
-}
-
-def checkSchedule() {
-    LogAction("Check Schedule has ran!","trace", false)
-    getLastRefreshSec()
-    def timeSince = atomicState.timeSinceRfsh ?: null
-    if (timeSince > 360) {
-        log.warn "It has been more than 5 minutes since last refresh!!!"
-        log.debug "Scheduling Issue found... Re-initializing schedule... Data should resume refreshing in 30 seconds"
-        addSchedule()
-        return
-    }
-    else if (!timeSince) {
-        log.warn "Hub TimeStamp Value was null..."
-        log.debug "Re-initializing schedule... Data should resume refreshing in 30 seconds"
-        addSchedule()
-        return
     }
 }
 
@@ -859,7 +872,7 @@ def getApiData() {
 }
 
 // Get extended energy metrics
-def getUsageData() {
+private getUsageData() {
     try {
         def usageData = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getEstCombined")
         if(usageData && (usageData != atomicState?.lastUsageData)) {
@@ -880,7 +893,7 @@ def getUsageData() {
 }
 
 // Get tariff energy metrics
-def getTariffData() {
+private getTariffData() {
     try {
         def tariffData = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getTariff")
         def tData = tariffData[0]
@@ -1000,7 +1013,7 @@ def getLastRefreshSec() {
         atomicState.timeSinceRfsh = GetTimeDiffSeconds(atomicState?.hubData?.hubTsHuman, "getLastRefreshSec")
         LogAction("TimeSinceRefresh: ${atomicState.timeSinceRfsh} seconds", "info", false)
     }
-    runIn(130, "getLastRefreshSec")
+    //runIn(130, "getLastRefreshSec")
 }
 
 //Returns time difference is seconds

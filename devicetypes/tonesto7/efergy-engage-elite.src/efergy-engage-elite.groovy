@@ -46,7 +46,7 @@ metadata {
     tiles (scale: 2) {
         multiAttributeTile(name:"powerMulti", type:"generic", width:6, height:4) {
             tileAttribute("device.power", key: "PRIMARY_CONTROL") {
-                attributeState "power", label: '${currentValue}W', unit: "W", icon: "https://github.com/efergy-manager/master/resources/images/"
+                attributeState "power", label: '${currentValue}W', unit: "W", icon: "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/images/power_icon_bk.png",
                         foregroundColor: "#000000",
                         backgroundColors:[
                             [value: 1, color: "#00cc00"], //Light Green
@@ -141,9 +141,10 @@ def generateEvent(Map eventData) {
             state.timeZone = !location?.timeZone ? eventData?.tz : location?.timeZone
             state?.monthName = eventData?.monthName
             state?.currencySym = eventData?.currencySym
-            debugOnEvent(eventData?.showLogging)
+            debugOnEvent(eventData?.debug ? true : false)
             deviceVerEvent(eventData?.latestVer.toString())
-            handleData(eventData?.readingData, eventData?.usageData, eventData?.tariffData, eventData?.hubData)
+            updateAttributes(eventData?.readingData, eventData?.usageData, eventData?.tariffData, eventData?.hubData)
+            handleData(eventData?.readingData, eventData?.usageData)
             apiStatusEvent(eventData?.apiIssues)
             if(!eventData?.hubData?.hubTsHuman) { lastCheckinEvent(null) }
             else { lastCheckinEvent(eventData?.hubTsHuman) }
@@ -156,114 +157,102 @@ def generateEvent(Map eventData) {
     }
 }
 
-String getDataString(Integer seriesIndex) {
-    def dataString = ""
-    def dataTable = []
-    switch (seriesIndex) {
-        case 1:
-            dataTable = state.energyTableYesterday
-            break
-        case 2:
-            dataTable = state.powerTableYesterday
-            break
-        case 3:
-            dataTable = state.energyTable
-            break
-        case 4:
-            dataTable = state.powerTable
-            break
-    }
-    dataTable.each() {
-        def dataArray = [[it[0],it[1],0],null,null,null,null]
-        dataArray[seriesIndex] = it[2]
-        dataString += dataArray.toString() + ","
-    }
-    return dataString
-}
+
 
 def clearHistory() {
     log.trace "Clearing History..."
     state?.energyTable = null
     state?.energyTableYesterday = null
-    state?.powerTable = null
+    state?.pTable = null
     state?.powerTableYesterday = null
 }
 
-private handleData(readingData, usageData, tariffData, hubData) {
+private handleData(readingData, usageData) {
     //log.trace "handleData ($power, $energy)"
     try {
-        def curDayNum = new Date().format("dd",location?.timeZone)
-        if(state?.todayNum == null) { state?.todayNum = curDayNum }
-        def energyToday = usageData?.todayUsage
+        def currentDay = new Date().format("dd",location?.timeZone)
+        if(state?.currentDay == null) { state?.currentDay = currentDay }
+        def currentEnergy = usageData?.todayUsage
         def currentPower = readingData?.powerReading
 
-        logWriter("--------handleData START-------")
-        logWriter("curDayNum: $curDayNum")
-        logWriter("todayNum(state): ${state?.todayNum}")
-        logWriter("energyToday: $energyToday")
+        logWriter("currentDay: $currentDay")
+        logWriter("currentDay(state): ${state?.currentDay}")
         logWriter("currentPower: $currentPower")
-        logWriter("powerTable(state): ${state?.powerTable}")
-        logWriter("energyTable(state): ${state?.energyTable}")
-
-        def powerTable
-      def energyTable
-        if(state?.powerTable) { powerTable = state?.powerTable }
-        if(state?.energyTable) { energyTable = state?.energyTable }
-
-        updateAttributes(readingData, usageData, tariffData, hubData)
-
-      if (state.todayNum != curDayNum) {
-        state?.minPowerReading = currentPower
-            state?.maxPowerReading = currentPower
-        state.todayNum = curDayNum
-        state.powerTableYesterday = powerTable
-        state.energyTableYesterday = energyTable
-        powerTable = powerTable ? [] : null
-        energyTable = energyTable ? [] : null
-        state.lastPower = 0
-      }
+        logWriter("currentEnergy: $currentEnergy")
 
         state.lastPower = currentPower
         logWriter("lastPower: ${state?.lastPower}")
-      def previousPower = (state?.lastPower != null) ? state?.lastPower : currentPower
+        def previousPower = state?.lastPower ?: currentPower
         logWriter("previousPower: $previousPower")
-      def powerChange = currentPower.toInteger() - previousPower.toInteger()
+        def powerChange = currentPower.toInteger() - previousPower.toInteger()
         logWriter("powerChange: $powerChange")
 
-      if (state.maxPowerReading <= currentPower) {
-        state.maxPowerReading = currentPower
+        if (state.maxPowerReading <= currentPower) {
+            state.maxPowerReading = currentPower
             sendEvent(name: "maxPowerReading", value: currentPower, unit: "kWh", description: "Highest Power Reading is $currentPower kWh", display: false, displayed: false)
             logWriter("maxPowerReading: ${state?.maxPowerReading}W")
-      }
+        }
         if (state.minPowerReading >= currentPower) {
-        state.minPowerReading = currentPower
+            state.minPowerReading = currentPower
             sendEvent(name: "minPowerReading", value: currentPower, unit: "kWh", description: "Lowest Power Reading is $currentPower kWh", display: false, displayed: false)
             logWriter("minPowerReading: ${state?.minPowerReading}W")
-      }
-
-      if (state?.powerTableYesterday == null || state?.energyTableYesterday == null || powerTable == null || energyTable == null) {
-        if (state?.powerTableYesterday == null || state?.energyTableYesterday == null) {
-          runIn(7, "getPastData", [overwrite: false])
         }
-        if (powerTable == null || energyTable == null) {
-          runIn(17, "getTodaysData", [overwrite: false])
-        }
-      }
-      // add latest power & energy readings for the graph
-      if (currentPower > 0 || powerTable?.size() != 0) {
-        def newDate = new Date()
-            powerTable.add([newDate?.format("H", location?.timeZone),newDate.format("m", location?.timeZone),currentPower])
-        energyTable.add([newDate?.format("H", location?.timeZone),newDate?.format("m", location?.timeZone),energyToday])
-            state.powerTable = powerTable
-            state.energyTable = energyTable
-      }
+        if(state?.pTable == null) {
+            //runIn(66, "getPastData", [overwrite: false])
+            //Attempts to populate the power table with previous power events from today
+            //runIn(23, "getTodaysData", [overwrite: false])
 
-        logWriter("powerTable(OUT): $powerTable")
-        logWriter("energyTable(OUT): $energyTable")
-        logWriter("------handleData END------")
+            state?.pTable = []
+            state?.energyTable = []
+            addNewData(currentPower, currentEnergy)
+        }
+
+        def pTable = state?.pTable
+        def eTable = state?.energyTable
+
+
+        if (state?.powerTableYesterday?.size() == 0) {
+            state.powerTableYesterday = pTable
+            state.energyTableYesterday = eTable
+        }
+
+        if (!state?.currentDay || state.currentDay != currentDay) {
+            state?.minPowerReading = currentPower
+            state?.maxPowerReading = currentPower
+            state.currentDay = currentDay
+            state.powerTableYesterday = pTable
+            state.energyTableYesterday = eTable
+            state.pTable = []
+            state.energyTable = []
+            state.lastPower = 0
+        }
+        addNewData(currentPower, currentEnergy)
     } catch (ex) {
         log.error "handleData Exception:", ex
     }
+}
+
+def addNewData(pow, ener) {
+    def pTable = state?.pTable
+    def eTable = state?.energyTable
+    log.debug "_______Adding New Data_______"
+    log.debug "PowerTable Size (Before): ${pTable.size()}"
+    log.debug "PowerTable Size (State Before): ${state?.pTable.size()}"
+
+    def newDate = new Date()
+    if(pow && pTable != null) {
+        log.debug "pTable (before): ${pTable}"
+        pTable?.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),pow.toInteger()])
+        log.debug "pTable (after): ${pTable}"
+    }
+    if(ener && eTable != null) {
+        eTable?.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),ener.toDouble()])
+    }
+    state.pTable = pTable
+    state.energyTable = eTable
+    log.debug "PowerTable Size (After): ${pTable.size()}"
+    log.debug "PowerTable Size (State After): ${state?.pTable.size()}"
+    log.debug "__________________________________"
 }
 
 def updateAttributes(rData, uData, tData, hData) {
@@ -299,14 +288,12 @@ def updateAttributes(rData, uData, tData, hData) {
     sendEvent(name: "monthUsage", value: uData?.monthUsage, unit: state?.currencySym, display: false, displayed: false)
     sendEvent(name: "monthEst",   value: uData?.monthEst, unit: state?.currencySym, display: false, displayed: false)
 
-    if (data?.monthBudget > 0) {
+    if (uData?.monthBudget > 0) {
         budgPercent = Math.round(Math.round(uData?.monthCost?.toFloat()) / Math.round(uData?.monthBudget?.toFloat()) * 100)
         sendEvent(name: "budgetPercentage_str", value: "Monthly Budget:\nUsed ${budgPercent}% (${state?.currencySym}${uData?.monthCost}) of ${state?.currencySym}${uData?.monthBudget} ", display: false, displayed: false)
-        sendEvent(name: "budgetPercentage", value: budgPercent, unit: "%", description: "Budget Percentage is ${budgPercent}%", display: false, displayed: false)
-    }
-       else {
+        sendEvent(name: "budgetPercentage", value: budgPercent, unit: "%", description: "Percentage of Budget User is (${budgPercent}%)", display: false, displayed: false)
+    } else {
         budgPercent = 0
-        log.debug "budgPerc: ${budgPercent}"
         sendEvent(name: "budgetPercentage_str", value: "Monthly Budget:\nBudget Not Set...", display: false, displayed: false)
     }
     logWriter("Budget Percentage: ${budgPercent}%")
@@ -331,68 +318,6 @@ def updateAttributes(rData, uData, tData, hData) {
     sendEvent(name: "hubName", value: hData?.hubName, display: false, displayed: false)
 }
 
-private getPastData() {
-    def startOfToday = timeToday("00:00", location?.timeZone)
-    def newValues
-    log.trace "Querying DB for yesterday's data…"
-    def dataTable = []
-    def powerData = device.statesBetween("power", startOfToday - 1, startOfToday, [max: 500]) // 24h in 5min intervals should be more than sufficient…
-    // work around a bug where the platform would return less than the requested number of events (as June 2016, only 50 events are returned)
-    log.debug "yesterdays powerData: ${powerData.size()}"
-    if (powerData?.size()) {
-        while ((newValues = device.statesBetween("power", startOfToday - 1, powerData?.last().date, [max: 500]))?.size()) {
-            powerData += newValues
-        }
-        powerData?.reverse().each() {
-            dataTable.add([it?.date.format("H", location.timeZone),it?.date.format("m", location?.timeZone),it?.integerValue])
-        }
-    }
-    state.powerTableYesterday = dataTable
-    dataTable = []
-    def energyData = device.statesBetween("energy", startOfToday - 1, startOfToday, [max: 500])
-    log.debug "yesterdays energyData: ${energyData.size()}"
-    if (energyData?.size()) {
-        while ((newValues = device.statesBetween("energy", startOfToday - 1, energyData?.last().date, [max: 500]))?.size()) {
-            energyData += newValues
-        }
-        // we drop the first point after midnight (0 energy) in order to have the graph scale correctly
-        energyData?.reverse().drop(1).each() {
-            dataTable.add([it?.date.format("H", location?.timeZone),it?.date.format("m", location?.timeZone),it?.floatValue])
-        }
-    }
-    state.energyTableYesterday = dataTable
-}
-
-private getTodaysData() {
-    def startOfToday = timeToday("00:00", location?.timeZone)
-    def newValues
-    log.trace "Querying DB for today's data…"
-    def powerTable = []
-    def powerData = device.statesSince("power", startOfToday, [max: 500])
-    log.debug "powerData: ${powerData.size()}"
-    if (powerData.size()) {
-        while ((newValues = device.statesBetween("power", startOfToday, powerData?.last().date, [max: 500]))?.size()) {
-            powerData += newValues
-        }
-        powerData?.reverse().each() {
-            powerTable.add([it?.date.format("H", location?.timeZone),it?.date.format("m", location?.timeZone),it?.integerValue])
-        }
-    }
-    def energyTable = []
-    def energyData = device.statesSince("energy", startOfToday, [max: 500])
-    log.debug "energyData: ${energyData.size()}"
-    if (energyData?.size()) {
-        while ((newValues = device.statesBetween("energy", startOfToday, energyData?.last()?.date, [max: 500]))?.size()) {
-            energyData += newValues
-        }
-        energyData?.reverse().drop(1).each() {
-            energyTable.add([it?.date.format("H", location?.timeZone),it?.date.format("m", location?.timeZone),it?.floatValue])
-        }
-    }
-    state.powerTable = powerTable
-    state.energyTable = energyTable
-}
-
 def lastCheckinEvent(checkin) {
     //log.trace "lastCheckinEvent()..."
     def formatVal = "MMM d, yyyy - h:mm:ss a"
@@ -404,7 +329,7 @@ def lastCheckinEvent(checkin) {
     if(!lastChk.equals(lastConn?.toString())) {
         log.debug("UPDATED | Last Hub Check-in was: (${lastConn}) | Original State: (${lastChk})")
         sendEvent(name: 'lastConnection', value: lastConn?.toString(), displayed: false, isStateChange: true)
-    } else { Logger("Last Hub Check-in was: (${lastConn}) | Original State: (${lastChk})") }
+    } else { logWriter("Last Hub Check-in was: (${lastConn}) | Original State: (${lastChk})") }
 }
 
 def lastUpdatedEvent() {
@@ -445,25 +370,22 @@ def deviceVerEvent(ver) {
     } else { logWriter("Device Type Version is: (${newData}) | Original State: (${curData})") }
 }
 
-def getEnergy() {
-    return !device.currentValue("energy") ? 0 : device.currentValue("energy")
+def apiStatusEvent(issue) {
+    def curStat = device.currentState("apiStatus")?.value
+    def newStat = issue ? "issue" : "ok"
+    state?.apiStatus = newStat
+    if(!curStat.equals(newStat)) {
+        log.debug("UPDATED | API Status is: (${newStat.toString().capitalize()}) | Original State: (${curStat.toString().capitalize()})")
+        sendEvent(name: "apiStatus", value: newStat, descriptionText: "API Status is: ${newStat}", displayed: true, isStateChange: true, state: newStat)
+    } else { logWriter("API Status is: (${newStat}) | Original State: (${curStat})") }
 }
 
-def getPower() {
-    return !device.currentValue("power") ? 0 : device.currentValue("power")
-}
-
-def getStateSize()      { return state?.toString().length() }
-
-def getStateSizePerc()  { return (int) ((stateSize/100000)*100).toDouble().round(0) }
-
-def getDataByName(String name) {
-    state[name] ?: device.getDataValue(name)
-}
-
-def getDeviceStateData() {
-    return getState()
-}
+def getEnergy() { return !device.currentValue("energy") ? 0 : device.currentValue("energy") }
+def getPower() { return !device.currentValue("power") ? 0 : device.currentValue("power") }
+def getStateSize() { return state?.toString().length() }
+def getStateSizePerc() { return (int) ((stateSize/100000)*100).toDouble().round(0) }
+def getDataByName(String name) { state[name] ?: device.getDataValue(name) }
+def getDeviceStateData() { return getState() }
 
 def isCodeUpdateAvailable(newVer, curVer) {
     def result = false
@@ -487,14 +409,21 @@ def isCodeUpdateAvailable(newVer, curVer) {
     return result
 }
 
+def getTimeZone() {
+    def tz = null
+    if (location?.timeZone) { tz = location?.timeZone }
+    if(!tz) { log.warn "getTimeZone: TimeZone is not found ..." }
+    return tz
+}
+
 //Log Writer that all logs are channel through *It will only output these if Debug Logging is enabled under preferences
 private def logWriter(value) {
-    if (state.showLogging) {
+    if (state.debug) {
         log.debug "${value}"
     }
 }
 
-def Logger(msg, type) {
+def Logger(msg, type="debug") {
     if(msg && type) {
         switch(type) {
             case "debug":
@@ -522,6 +451,116 @@ def Logger(msg, type) {
 /*************************************************************
 |                  HTML TILE RENDER FUNCTIONS                   |
 **************************************************************/
+
+def getSomeOldData(type, attributestr, gfloat, devpoll = false, nostate = true) {
+    log.trace "getSomeOldData ( ${type}, ${attributestr}, ${gfloat}, ${devpoll})"
+
+    //if (devpoll && (!state?."${type}TableYesterday" || !state?."${type}Table")) {
+    //runIn( 66, "tgetSomeOldData", [data: [type:type, attributestr:attributestr, gfloat:gfloat, devpoll:false]])
+    //return
+    //}
+
+    def startOfToday = timeToday("00:00", location.timeZone)
+    def newValues
+    def dataTable = []
+
+    if (( nostate || state?."${type}TableYesterday" == null) && attributestr ) {
+        log.trace "Querying DB for yesterday's ${type} data…"
+        def yesterdayData = device.statesBetween("${attributestr}", startOfToday - 1, startOfToday, [max: 100])
+        log.debug "got ${yesterdayData.size()}"
+        if (yesterdayData.size() > 0) {
+            while ((newValues = device.statesBetween("${attributestr}", startOfToday - 1, yesterdayData.last().date, [max: 100])).size()) {
+                //log.debug "got ${newValues.size()}"
+                yesterdayData += newValues
+            }
+        }
+        log.debug "got ${yesterdayData.size()}"
+        dataTable = []
+        yesterdayData.reverse().each() {
+            if (gfloat) { dataTable.add([it.date.format("H", location.timeZone),it.date.format("m", location.timeZone),it.floatValue]) }
+            else { dataTable.add([it.date.format("H", location.timeZone),it.date.format("m", location.timeZone),it.stringValue]) }
+        }
+        log.debug "finished ${dataTable}"
+        if (!nostate) {
+            state."${type}TableYesterday" = dataTable
+        }
+    }
+
+    if ( nostate || state?."${type}Table" == null) {
+        log.trace "Querying DB for today's ${type} data…"
+        def todayData = device.statesSince("${attributestr}", startOfToday, [max: 100])
+        log.debug "got ${todayData.size()}"
+        if (todayData.size() > 0) {
+            while ((newValues = device.statesBetween("${attributestr}", startOfToday, todayData.last().date, [max: 100])).size()) {
+                //log.debug "got ${newValues.size()}"
+                todayData += newValues
+            }
+        }
+        log.debug "got ${todayData.size()}"
+        dataTable = []
+        todayData.reverse().each() {
+            if (gfloat) { dataTable.add([it.date.format("H", location.timeZone),it.date.format("m", location.timeZone),it.floatValue]) }
+            else { dataTable.add([it.date.format("H", location.timeZone),it.date.format("m", location.timeZone),it.stringValue]) }
+        }
+        log.debug "finished ${dataTable}"
+        if (!nostate) {
+            state."${type}Table" = dataTable
+        }
+    }
+}
+
+private getPastData() {
+    if(state?.powerTableYesterday == null) {
+        state?.powerTableYesterday = []
+        def startOfToday = timeToday("00:00", location?.timeZone)
+        def newValues
+        log.trace "Querying DB for Yesterday's Power data…"
+        def dataTable = []
+        def powerData = device.statesBetween("power", startOfToday - 1, startOfToday, [max: 100])
+        log.debug "yesterdays powerData: ${powerData?.size()}"
+        if (powerData?.size()) {
+            /*while ((newValues = device.statesBetween("power", startOfToday - 1, powerData?.last().date, [max: 100]))?.size()) {
+                powerData += newValues
+            }*/
+            powerData?.reverse().each() {
+                dataTable.add([it?.date.format("H", location.timeZone),it?.date.format("m", location?.timeZone),it?.integerValue])
+            }
+        }
+        state.powerTableYesterday = dataTable
+    }
+}
+
+private getTodaysData() {
+    if(state?.pTable == null) {
+        getSomeOldData("p", "power" , false)
+    }
+}
+
+String getDataString(Integer seriesIndex) {
+    def dataString = ""
+    def dataTable = []
+    switch (seriesIndex) {
+        case 1:
+            dataTable = state.energyTableYesterday
+            break
+        case 2:
+            dataTable = state.powerTableYesterday
+            break
+        case 3:
+            dataTable = state.energyTable
+            break
+        case 4:
+            dataTable = state.pTable
+            break
+    }
+    dataTable.each() {
+        def dataArray = [[it[0],it[1],0],null,null,null,null]
+        dataArray[seriesIndex] = it[2]
+        dataString += dataArray.toString() + ","
+    }
+    return dataString
+}
+
 def getImgBase64(url,type) {
     try {
         def params = [
@@ -605,31 +644,7 @@ def getJS(url){
 
 def getCssData() {
     def cssData = null
-    //def htmlInfo = state?.htmlInfo
-    def htmlInfo
-    state.cssData = null
-
-    if(htmlInfo?.cssUrl && htmlInfo?.cssVer) {
-        if(state?.cssData) {
-            if (state?.cssVer?.toInteger() == htmlInfo?.cssVer?.toInteger()) {
-                //log.debug "getCssData: CSS Data is Current | Loading Data from State..."
-                cssData = state?.cssData
-            } else if (state?.cssVer?.toInteger() < htmlInfo?.cssVer?.toInteger()) {
-                log.debug "getCssData: CSS Data is Outdated | Loading Data from Source..."
-                cssData = getFileBase64(htmlInfo.cssUrl, "text", "css")
-                state.cssData = cssData
-                state?.cssVer = htmlInfo?.cssVer
-            }
-        } else {
-            log.debug "getCssData: CSS Data is Missing | Loading Data from Source..."
-            cssData = getFileBase64(htmlInfo.cssUrl, "text", "css")
-            state?.cssData = cssData
-            state?.cssVer = htmlInfo?.cssVer
-        }
-    } else {
-        log.debug "getCssData: No Stored CSS Info Data Found for Device... Loading for Static URL..."
-        cssData = getFileBase64(cssUrl(), "text", "css")
-    }
+    cssData = getFileBase64(cssUrl(), "text", "css")
     return cssData
 }
 
@@ -640,15 +655,14 @@ def getChartJsData() {
 }
 
 def cssUrl() { return "https://raw.githubusercontent.com/desertblade/ST-HTMLTile-Framework/master/css/smartthings.css" }
+
 def chartJsUrl() { return "https://www.gstatic.com/charts/loader.js" }
 
-def getImg(imgName) {
-    return imgName ? "https://cdn.rawgit.com/tonesto7/efergy-manager/master/Images/Devices/$imgName" : ""
-}
+def getImg(imgName) { return imgName ? "https://cdn.rawgit.com/tonesto7/efergy-manager/master/Images/Devices/$imgName" : "" }
 
 def getStartTime() {
     def startTime = 24
-    if (state?.powerTable?.size()) { startTime = state?.powerTable?.min{it[0].toInteger()}[0].toInteger() }
+    if (state?.pTable?.size()) { startTime = state?.pTable?.min{it[0].toInteger()}[0].toInteger() }
     if (state?.powerTableYesterday?.size()) { startTime = Math.min(startTime, state?.powerTableYesterday?.min{it[0].toInteger()}[0].toInteger()) }
     log.trace "startTime ${startTime}"
     return startTime
@@ -657,7 +671,7 @@ def getStartTime() {
 def getMinVal() {
     def list = []
     if (state?.powerTableYesterday?.size() > 0) { list.add(state?.powerTableYesterday?.min { it[2] }[2].toInteger()) }
-    if (state?.powerTable?.size() > 0) { list.add(state?.powerTable.min { it[2] }[2].toInteger()) }
+    if (state?.pTable?.size() > 0) { list.add(state?.pTable.min { it[2] }[2].toInteger()) }
     log.trace "getMinVal: ${list.min()} result: ${list}"
     return list?.min()
 }
@@ -665,7 +679,7 @@ def getMinVal() {
 def getMaxVal() {
     def list = []
     if (state?.powerTableYesterday?.size() > 0) { list.add(state?.powerTableYesterday.max { it[2] }[2].toInteger()) }
-    if (state?.powerTable?.size() > 0) { list.add(state?.powerTable.max { it[2] }[2].toInteger()) }
+    if (state?.pTable?.size() > 0) { list.add(state?.pTable.max { it[2] }[2].toInteger()) }
     log.trace "getMaxVal: ${list.max()} result: ${list}"
     return list?.max()
 }
@@ -673,7 +687,7 @@ def getMaxVal() {
 def getGraphHTML() {
     try {
         def updateAvail = !state.updateAvailable ? "" : "<h3>Device Update Available!</h3>"
-        def chartHtml = (state.powerTable?.size() > 0 && state.energyTable?.size() > 0) ? showChartHtml() : hideChartHtml()
+        def chartHtml = (state.pTable?.size() > 0) ? showChartHtml() : hideChartHtml()
 
         def html = """
         <!DOCTYPE html>
@@ -829,6 +843,272 @@ def hideChartHtml() {
       <p>Waiting for more data to be collected...</p>
       <p>This may take at least 24 hours</p>
     </div>
+    """
+    return data
+}
+
+
+def cssData() {
+    def data = """
+    body {
+        font-family: 'San Francisco', 'Roboto', 'Arial';
+        margin:0;
+        font-size: 3.9vw;
+        }
+
+        div {
+        margin:1px;
+        }
+
+        .container {
+        position: relative;
+        width: 100%;
+        }
+
+        .hideable{
+        transition: all ease 2s;
+        }
+
+        fieldset {
+        border: 1px solid #c0c0c0;
+        margin: 0 2px;
+        padding: 0.35em 0.625em 0.75em;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+        padding:0px;
+        margin:0px;
+        }
+
+        .topBorder {
+        border-top: 2px solid #00a1db;
+        }
+
+        .bottomBorder {
+        border-bottom: 2px solid #808080;
+        }
+
+        h1 {
+        font-size: 6vw;
+        width: 100%;
+        text-align: center;
+        font-weight: normal;
+        }
+
+        h2 {
+        font-size: 9vw;
+        text-align: center;
+        margin-left: auto;
+        margin-right: auto;
+        font-weight: normal;
+        }
+
+
+        h3, h3 a {
+        font-size: 6vw;
+        font-weight: bold;
+        text-align: center;
+        background: #B74C4C;
+        color: #f5f5f5;
+        }
+
+        h4 {
+        font-size: 4vw;
+        font-weight: bold;
+        text-align: center;
+        background: #00a1db;
+        color: #f5f5f5;
+        }
+
+        .centerText {
+        text-align: center;
+        }
+
+        hr {
+        background: #00a1db;
+        width: 100%;
+        height: 1px;
+        }
+
+        .topModal, .bottomModal {
+        position: fixed;
+        font-size: 3vw;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 99999;
+        opacity:0;
+        -webkit-transition: opacity 400ms ease-in;
+        -moz-transition: opacity 400ms ease-in;
+        transition: opacity 400ms ease-in;
+        pointer-events: none;
+        }
+
+        .topModal:target, .bottomModal:target {
+        opacity:1;
+        pointer-events: auto;
+        }
+
+        .topModal > div {
+        width: 65%;
+        position: relative;
+        margin: 10% auto;
+        padding: 5px 20px 13px 20px;
+        border-radius: 10px;
+        background: #fff;
+        }
+
+        .bottomModal > div {
+        width: 65%;
+        position: relative;
+        margin:  75% auto;
+        padding: 5px 20px 13px 20px;
+        border-radius: 10px;
+        background: #fff;
+        }
+
+        .close {
+        background: #606061;
+        color: #FFFFFF;
+        line-height: 25px;
+        position: absolute;
+        right: -12px;
+        text-align: center;
+        top: -10px;
+        width: 24px;
+        text-decoration: none;
+        font-weight: bold;
+        -webkit-border-radius: 12px;
+        -moz-border-radius: 12px;
+        border-radius: 12px;
+        -moz-box-shadow: 1px 1px 3px #000;
+        -webkit-box-shadow: 1px 1px 3px #000;
+        box-shadow: 1px 1px 3px #000;
+        }
+
+        .close:hover { background: #00d9ff; }
+
+        table {
+        border: none;
+        border-radius: 3px;
+        width:100%;
+        -webkit-border-radius: 3px;
+        -moz-border-radius: 3px;
+        }
+
+        th, td {
+        box-shadow: inset 0 0px rgba(0, 0, 0, 0.25), inset 0 0px rgba(0, 0, 0, 0.25);
+        padding: 4px;
+        }
+
+        th {
+        -webkit-font-smoothing: antialiased;
+        color: #f5f5f5;
+        text-shadow: 0 0 1px rgba(0, 0, 0, 0.1);
+        -webkit-border-radius: 2px;
+        -moz-border-radius: 2px;
+        background: #00a1db;
+        }
+
+        td {
+        color: grey;
+        text-shadow: 0 0 1px rgba(255, 255, 255, 0.1);
+        text-align: center;
+        }
+
+        tr {
+        -webkit-transition: background 0.3s, box-shadow 0.3s;
+        -moz-transition: background 0.3s, box-shadow 0.3s;
+        transition: background 0.3s, box-shadow 0.3s;
+        }
+
+        .dateTimeText {
+        font-size: 3.4vw;
+        }
+
+        .battImg {
+        width:30px; height:15px;
+        }
+
+        .alarmImg {
+        vertical-align: top;
+        width:60px; height:60px;
+        }
+
+        .leafImg {
+        width: 25px;
+        height: 25px;
+        }
+
+        .column,
+        .columns {
+        width: 100%;
+        float: left;
+        box-sizing: border-box;
+        }
+
+        .one.column,
+        .one.columns                    { width: 4.66666666667%; }
+        .two.columns                    { width: 13.3333333333%; }
+        .three.columns                  { width: 22%;            }
+        .four.columns                   { width: 32.6666666667%; }
+        .five.columns                   { width: 39.3333333333%; }
+        .six.columns                    { width: 48%;            }
+        .seven.columns                  { width: 56.6666666667%; }
+        .eight.columns                  { width: 65.3333333333%; }
+        .nine.columns                   { width: 74.0%;          }
+        .ten.columns                    { width: 82.6666666667%; }
+        .eleven.columns                 { width: 91.3333333333%; }
+        .twelve.columns                 { width: 100%; margin-left: 0; }
+
+
+        /* Offsets */
+        .offset-by-one.column,
+        .offset-by-one.columns          { margin-left: 8.66666666667%; }
+        .offset-by-two.column,
+        .offset-by-two.columns          { margin-left: 17.3333333333%; }
+        .offset-by-three.column,
+        .offset-by-three.columns        { margin-left: 26%;            }
+        .offset-by-four.column,
+        .offset-by-four.columns         { margin-left: 34.6666666667%; }
+        .offset-by-five.column,
+        .offset-by-five.columns         { margin-left: 43.3333333333%; }
+        .offset-by-six.column,
+        .offset-by-six.columns          { margin-left: 52%;            }
+        .offset-by-seven.column,
+        .offset-by-seven.columns        { margin-left: 60.6666666667%; }
+        .offset-by-eight.column,
+        .offset-by-eight.columns        { margin-left: 69.3333333333%; }
+        .offset-by-nine.column,
+        .offset-by-nine.columns         { margin-left: 78.0%;          }
+        .offset-by-ten.column,
+        .offset-by-ten.columns          { margin-left: 86.6666666667%; }
+        .offset-by-eleven.column,
+        .offset-by-eleven.columns       { margin-left: 95.3333333333%; }
+
+
+        .container:after,
+        .row:after,
+        .u-cf {
+        content: "";
+        display: table;
+        clear: both; }
+
+        .row {
+            width:100%;
+            margin:2px;
+        }
+
+        .red{
+            background-color:#db3a00;
+        }
+
+        .yellow{
+            background-color:#dba800;
+        }
+
     """
     return data
 }
