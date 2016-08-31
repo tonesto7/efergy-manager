@@ -46,7 +46,7 @@ metadata {
     tiles (scale: 2) {
         multiAttributeTile(name:"powerMulti", type:"generic", width:6, height:4) {
             tileAttribute("device.power", key: "PRIMARY_CONTROL") {
-                attributeState "power", label: '${currentValue}', unit: "W",
+                attributeState "power", label: '${currentValue}W', unit: "W",
                         foregroundColor: "#000000",
                         backgroundColors:[
                             [value: 1, color: "#00cc00"], //Light Green
@@ -97,13 +97,13 @@ metadata {
             state "default", action:"refresh.refresh", icon:"st.secondary.refresh"
         }
 
-        valueTile("devVer", "device.devVer", width: 4, height: 1, decoration: "flat", wordWrap: true) {
-            state "default", label: '${currentValue}'
+        valueTile("devVer", "device.devTypeVer", width: 4, height: 1, decoration: "flat", wordWrap: true) {
+            state "default", label: 'Device Type Version:\nv${currentValue}'
         }
         htmlTile(name:"graphHTML", action: "getGraphHTML", width: 6, height: 8, whitelist: ["www.gstatic.com", "raw.githubusercontent.com", "cdn.rawgit.com"])
 
         main (["powerMulti"])
-        details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate", "readingUpdated_str", "refresh", "hubStatus", "hubVersion", "devVer", "graphHTML"])
+        details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate", "readingUpdated_str", "graphHTML", "refresh"])
     }
 }
 
@@ -142,8 +142,11 @@ def generateEvent(Map eventData) {
             state?.monthName = eventData?.monthName
             state?.currencySym = eventData?.currencySym
             debugOnEvent(eventData?.showLogging)
-            deviceVerEvent(eventData?.devVersion)
+            deviceVerEvent(eventData?.latestVer.toString())
             handleData(eventData?.readingData, eventData?.usageData, eventData?.tariffData, eventData?.hubData)
+            apiStatusEvent(eventData?.apiIssues)
+            if(!eventData?.hubData?.hubTsHuman) { lastCheckinEvent(null) }
+            else { lastCheckinEvent(eventData?.hubTsHuman) }
         }
         lastUpdatedEvent()
         return null
@@ -154,28 +157,28 @@ def generateEvent(Map eventData) {
 }
 
 String getDataString(Integer seriesIndex) {
-  def dataString = ""
-  def dataTable = []
-  switch (seriesIndex) {
-    case 1:
-      dataTable = state.energyTableYesterday
-      break
-    case 2:
-      dataTable = state.powerTableYesterday
-      break
-    case 3:
-      dataTable = state.energyTable
-      break
-    case 4:
-      dataTable = state.powerTable
-      break
-  }
-  dataTable.each() {
-    def dataArray = [[it[0],it[1],0],null,null,null,null]
-    dataArray[seriesIndex] = it[2]
-    dataString += dataArray.toString() + ","
-  }
-  return dataString
+    def dataString = ""
+    def dataTable = []
+    switch (seriesIndex) {
+        case 1:
+            dataTable = state.energyTableYesterday
+            break
+        case 2:
+            dataTable = state.powerTableYesterday
+            break
+        case 3:
+            dataTable = state.energyTable
+            break
+        case 4:
+            dataTable = state.powerTable
+            break
+    }
+    dataTable.each() {
+        def dataArray = [[it[0],it[1],0],null,null,null,null]
+        dataArray[seriesIndex] = it[2]
+        dataString += dataArray.toString() + ","
+    }
+    return dataString
 }
 
 def clearHistory() {
@@ -321,7 +324,8 @@ def updateAttributes(rData, uData, tData, hData) {
     logWriter("hubStatus: " + hData?.hubStatus)
     logWriter("hubName: " + hData?.hubName)
     logWriter("")
-
+    state.hubStatus = hData?.hubStatus
+    state.hubVersion = hData?.hubVersion
     sendEvent(name: "hubVersion", value: hData?.hubVersion, display: false, displayed: false)
     sendEvent(name: "hubStatus", value: hData?.hubStatus, display: false, displayed: false)
     sendEvent(name: "hubName", value: hData?.hubName, display: false, displayed: false)
@@ -389,6 +393,20 @@ private getTodaysData() {
     state.energyTable = energyTable
 }
 
+def lastCheckinEvent(checkin) {
+    //log.trace "lastCheckinEvent()..."
+    def formatVal = "MMM d, yyyy - h:mm:ss a"
+    def tf = new SimpleDateFormat(formatVal)
+    tf.setTimeZone(getTimeZone())
+    def lastConn = checkin ? "${tf?.format(Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", checkin))}" : "Not Available"
+    def lastChk = device.currentState("lastConnection")?.value
+    state?.lastConnection = lastConn?.toString()
+    if(!lastChk.equals(lastConn?.toString())) {
+        log.debug("UPDATED | Last Hub Check-in was: (${lastConn}) | Original State: (${lastChk})")
+        sendEvent(name: 'lastConnection', value: lastConn?.toString(), displayed: false, isStateChange: true)
+    } else { Logger("Last Hub Check-in was: (${lastConn}) | Original State: (${lastChk})") }
+}
+
 def lastUpdatedEvent() {
     def now = new Date()
     def formatVal = "MMM d, yyyy - h:mm:ss a"
@@ -417,7 +435,7 @@ def debugOnEvent(debug) {
 def deviceVerEvent(ver) {
     def curData = device.currentState("devTypeVer")?.value.toString()
     def pubVer = ver ?: null
-    def dVer = devVer() ?: null
+    def dVer = devTypeVer() ?: null
     def newData = isCodeUpdateAvailable(pubVer, dVer) ? "${dVer}(New: v${pubVer})" : "${dVer}"
     state?.devTypeVer = newData
     state?.updateAvailable = isCodeUpdateAvailable(pubVer, dVer)
@@ -501,11 +519,9 @@ def Logger(msg, type) {
     }
 }
 
-
 /*************************************************************
-|                  HTML TILE RENDER FUNCTIONS              	 |
+|                  HTML TILE RENDER FUNCTIONS                   |
 **************************************************************/
-
 def getImgBase64(url,type) {
     try {
         def params = [
@@ -531,7 +547,6 @@ def getImgBase64(url,type) {
     }
     catch (ex) {
         log.error "getImageBytes Exception:", ex
-        exceptionDataHandler(ex.message, "getImgBase64")
     }
 }
 
@@ -560,7 +575,6 @@ def getFileBase64(url,preType,fileType) {
     }
     catch (ex) {
         log.error "getFileBase64 Exception:", ex
-        exceptionDataHandler(ex.message, "getFileBase64")
     }
 }
 
@@ -576,7 +590,6 @@ def getCSS(url = null){
     }
     catch (ex) {
         log.error "getCss Exception:", ex
-        exceptionDataHandler(ex.message, "getCSS")
     }
 }
 
@@ -656,6 +669,7 @@ def getMaxVal() {
     log.trace "getMaxVal: ${list.max()} result: ${list}"
     return list?.max()
 }
+
 def getGraphHTML() {
     try {
         def updateAvail = !state.updateAvailable ? "" : "<h3>Device Update Available!</h3>"
@@ -681,18 +695,15 @@ def getGraphHTML() {
 
                 <br></br>
                 <table>
-                <col width="40%">
-                <col width="20%">
-                <col width="40%">
+                <col width="49%">
+                <col width="49%">
                 <thead>
-                  <th>Network Status</th>
-                  <th>Leaf</th>
+                  <th>Hub Status</th>
                   <th>API Status</th>
                 </thead>
                 <tbody>
                   <tr>
-                    <td>${state?.onlineStatus.toString()}</td>
-                    <td><img src="${leafImg}" class="leafImg"></img></td>
+                    <td>${state?.hubStatus}</td>
                     <td>${state?.apiStatus}</td>
                   </tr>
                 </tbody>
@@ -711,14 +722,14 @@ def getGraphHTML() {
                       <th>Debug</th>
                       <th>Device Type</th>
                     </tr>
-                    <td>${state?.softwareVer.toString()}</td>
+                    <td>${state?.hubVersion.toString()}</td>
                     <td>${state?.debugStatus}</td>
                     <td>${state?.devTypeVer.toString()}</td>
                     </tbody>
                   </table>
                   <table>
                     <thead>
-                      <th>Nest Checked-In</th>
+                      <th>Hub Checked-In</th>
                       <th>Data Last Received</th>
                     </thead>
                     <tbody>
@@ -759,11 +770,13 @@ def showChartHtml() {
       ]);
       var options = {
         fontName: 'San Francisco, Roboto, Arial',
-        height: 240,
+        width: '100%',
+        height: '100%',
         hAxis: {
           format: 'H:mm',
           minValue: [${getStartTime()},0,0],
-          slantedText: false
+          slantedText: true,
+          slantedTextAngle: 30
         },
         series: {
           0: {targetAxisIndex: 1, color: '#FFC2C2', lineWidth: 1},
@@ -786,11 +799,16 @@ def showChartHtml() {
           }
         },
         legend: {
-          position: 'none'
+          position: 'bottom',
+          maxLines: 4
         },
         chartArea: {
-          width: '72%',
-          height: '85%'
+          left: '12%',
+          right: '18%',
+          top: '3%',
+          bottom: '20%',
+          height: '85%',
+          width: '100%'
         }
       };
       var chart = new google.visualization.AreaChart(document.getElementById('chart_div'));
