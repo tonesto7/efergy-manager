@@ -46,7 +46,7 @@ metadata {
     tiles (scale: 2) {
         multiAttributeTile(name:"powerMulti", type:"generic", width:6, height:4) {
             tileAttribute("device.power", key: "PRIMARY_CONTROL") {
-                attributeState "power", label: '${currentValue}W', unit: "W",
+                attributeState "power", label: '${currentValue}W', unit: "W", icon: "https://github.com/efergy-manager/master/resources/images/"
                         foregroundColor: "#000000",
                         backgroundColors:[
                             [value: 1, color: "#00cc00"], //Light Green
