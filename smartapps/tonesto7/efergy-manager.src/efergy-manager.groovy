@@ -6,7 +6,6 @@
 |*******************************************************************************************|
 */
 
-import groovy.json.*
 import groovy.time.*
 import java.text.SimpleDateFormat
 
@@ -459,7 +458,7 @@ def refresh() {
 
             updateDeviceData()
             LogAction("", "info", false)
-            runIn(27, "checkSchedule")
+            //runIn(27, "checkSchedule")
         }
         else if (atomicState?.timeSinceRfsh > 360 || !atomicState?.timeSinceRfsh) { checkSchedule() }
     }
@@ -474,8 +473,8 @@ def refresh() {
 private addSchedule() {
     //schedule("1/1 * * * * ?", "refresh") //Runs every 30 seconds to Refresh Data
     schedule("0 0/1 * * * ?", "refresh") //Runs every 1 minute to make sure that data is accurate
-    runIn(27, "checkSchedule")
-    //runIn(130, "getLastRefreshSec")
+    //runIn(27, "checkSchedule")
+    //runIn(130, "checkSchedule")
 }
 
 private checkSchedule() {
