@@ -459,7 +459,7 @@ def refresh() {
 
             updateDeviceData()
             LogAction("", "info", false)
-            runIn(27, "checkSchedule")
+            runIn(27, "refresh")
         }
         else if (atomicState?.timeSinceRfsh > 360 || !atomicState?.timeSinceRfsh) { checkSchedule() }
     }
@@ -474,8 +474,11 @@ def refresh() {
 private addSchedule() {
     //schedule("1/1 * * * * ?", "refresh") //Runs every 30 seconds to Refresh Data
     schedule("0 0/1 * * * ?", "refresh") //Runs every 1 minute to make sure that data is accurate
-    runIn(27, "checkSchedule")
-    //runIn(130, "getLastRefreshSec")
+    //runIn(30, "refresh")
+    //runIn(60, "refresh")
+    runIn(130, "getLastRefreshSec")
+    //schedule("0 0/1 * 1/1 * ? *", "getLastRefreshSec") //Runs every 1 minute to make sure that data is accurate
+    runEvery5Minutes("checkSchedule")
 }
 
 private checkSchedule() {
@@ -879,7 +882,7 @@ private getUsageData() {
             atomicState?.lastUsageData = usageData
             def data = [:]
             atomicState?.usageData = [:]
-            data["todayUsage"] = usageData?.day_kwh.estimate ?: null
+            data["todayUsage"] = usageData?.day_kwh?.estimate.toDouble() ?: null
             data["todayCost"] = usageData?.day_tariff?.estimate ?: null
             data["monthUsage"] = usageData?.month_kwh?.previousSum ?: null
             data["monthCost"] = usageData?.month_tariff?.previousSum ?: null
@@ -1013,7 +1016,7 @@ def getLastRefreshSec() {
         atomicState.timeSinceRfsh = GetTimeDiffSeconds(atomicState?.hubData?.hubTsHuman, "getLastRefreshSec")
         LogAction("TimeSinceRefresh: ${atomicState.timeSinceRfsh} seconds", "info", false)
     }
-    //runIn(130, "getLastRefreshSec")
+    runIn(130, "getLastRefreshSec")
 }
 
 //Returns time difference is seconds
