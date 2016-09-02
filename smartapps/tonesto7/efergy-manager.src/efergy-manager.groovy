@@ -1,9 +1,21 @@
 /*
-|*******************************************************************************************|
+********************************************************************************************|
 |    Application Name: Efergy Manager 3.0                                                   |
-|    Author: Anthony S. (@tonesto7)                                                        |
+|    Author: Anthony S. (@tonesto7)                                                         |
+|    Copyright 2016 Anthony S.                                                              |
 |                                                                                           |
-|*******************************************************************************************|
+|  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file|
+|  except in compliance with the License. You may obtain a copy of the License at:           |
+|                                                                                           |
+|      http://www.apache.org/licenses/LICENSE-2.0                                           |
+|                                                                                           |
+|  Unless required by applicable law or agreed to in writing, software distributed under    |
+|  the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY  |
+|  KIND, either express or implied. See the License for the specific language governing     |
+|  permissions and limitations under the License.                                           |
+|                                                                                           |
+|                                                                                           |
+*********************************************************************************************
 */
 
 import groovy.time.*
@@ -46,34 +58,39 @@ preferences {
 	page(name: "notifPrefPage")
     page(name: "setNotificationTimePage")
     page(name: "uninstallPage")
-    page(name: "hubInfoPage", content: "hubInfoPage", refreshTimeout:5)
-    page(name: "readingInfoPage", content: "readingInfoPage", refreshTimeout:5)
+    page(name: "hubInfoPage")
+    page(name: "readingInfoPage")
     page(name: "infoPage")
     page(name: "changeLogPage")
     page(name: "savePage")
 }
 
 def startPage() {
-    if(!atomicState.appInstalled) { atomicState.appInstalled = false }
-    if(!atomicState?.cleanupComplete) { atomicState?.cleanupComplete = false }
+    if (atomicState.appInstalled == null) { atomicState.appInstalled = false }
+    if (atomicState?.cleanupComplete == null) { atomicState?.cleanupComplete = false }
+    if (atomicState?.pushTested == null) { atomicState.pushTested = false }
+    if (atomicState?.currencySym == null) { atomicState.currencySym = "\$" }
     if (location?.timeZone?.ID.contains("America/")) { atomicState.currencySym = "\$" }
-    if (atomicState.efergyAuthToken) { return mainPage() }
+    if (!atomicState?.efergyAuthToken == null) { return mainPage() }
     else { return loginPage() }
 }
 
 /* Efergy Login Page */
 def loginPage() {
-    return dynamicPage(name: "loginPage", nextPage: mainPage, uninstall: false, install: false) {
-        section("") {
-            href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png")
-        }
-        section("Efergy Login Page") {
-            paragraph "Please enter your https://engage.efergy.com login credentials to generate you Authentication Token and install the device automatically for you."
-            input("username", "email", title: "Username", description: "Efergy Username (email address)")
-            input("password", "password", title: "Password", description: "Efergy Password")
-            log.debug "login status: ${atomicState.loginStatus} - ${atomicState.loginDesc}"
-            if (atomicState.loginStatus != null && atomicState.loginDesc != null && atomicState.loginStatus != "ok") {
-                paragraph "${atomicState.loginDesc}... Please try again!!!"
+    if(!atomicState?.efergyAuthToken == null) { return mainPage() }
+    else {
+        return dynamicPage(name: "loginPage", nextPage: mainPage, uninstall: false, install: false) {
+            section("") {
+                href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png")
+            }
+            section("Efergy Login Page") {
+                paragraph "Please enter your https://engage.efergy.com login credentials to generate you Authentication Token and install the device automatically for you."
+                input("username", "email", title: "Username", description: "Efergy Username (email address)")
+                input("password", "password", title: "Password", description: "Efergy Password")
+                LogAction("login status: ${atomicState?.loginStatus} - ${atomicState?.loginDesc}", "info", true)
+                if (atomicState?.loginStatus != null && atomicState?.loginDesc != null && atomicState?.loginStatus != "ok") {
+                    paragraph "${atomicState?.loginDesc}... Please try again!!!"
+                }
             }
         }
     }
@@ -81,22 +98,19 @@ def loginPage() {
 
 /* Preferences */
 def mainPage() {
-    if (!atomicState.efergyAuthToken) { getAuthToken() }
-    if (!atomicState.pushTested) { atomicState.pushTested = false }
-    if (!atomicState.currencySym) { atomicState.currencySym = "\$" }
+    if (!atomicState?.efergyAuthToken) { getAuthToken() }
     getCurrency()
     getApiData()
     updateWebStuff(true)
-
     if (atomicState.loginStatus != "ok") { return loginPage() }
     def setupComplete = (!atomicState.appInstalled) ? false : true
 
-    dynamicPage(name: "mainPage", uninstall: false, install: setupComplete) {
-        if (atomicState.efergyAuthToken) {
+    dynamicPage(name: "mainPage", uninstall: false, install: true) {
+        if (atomicState?.efergyAuthToken) {
             section("") {
                 href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png", true)
             }
-            if(atomicState?.appInstalled) {
+            if(setupComplete) {
                 if(atomicState?.hubData && atomicState?.readingData) {
                     section("Efergy Hub:") {
                         href "hubInfoPage", title:"View Hub Info", description: "Tap to view more...", image: getAppImg("St_hub.png")
@@ -377,7 +391,7 @@ def getAppDebugDesc() {
 
 def readingInfoPage () {
     if (!atomicState?.hubData?.hubName) { refresh() }
-    return dynamicPage(name: "readingInfoPage", refreshInterval: 15, install: false) {
+    return dynamicPage(name: "readingInfoPage", refreshTimeout:10, install: false, uninstall: false) {
          section ("Efergy Reading Information") {
             def rData = atomicState?.readingData
             def tData = atomicState?.tarrifData
@@ -397,7 +411,7 @@ def readingInfoPage () {
 
 def hubInfoPage () {
     if (!atomicState?.hubData) { refresh() }
-    return dynamicPage(name: "hubInfoPage", install: false) {
+    return dynamicPage(name: "hubInfoPage", refreshTimeout:10, install: false, uninstall: false) {
          section ("Efergy Hub Information") {
             if(atomicState?.hubData) {
                 paragraph "Hub Name: " + atomicState?.hubData?.hubName
