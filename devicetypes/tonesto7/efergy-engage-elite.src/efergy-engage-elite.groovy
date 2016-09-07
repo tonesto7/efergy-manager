@@ -102,7 +102,6 @@ metadata {
         htmlTile(name:"graphHTML2", action: "getGraphHTML2", width: 6, height: 8, whitelist: ["www.gstatic.com", "raw.githubusercontent.com", "cdn.rawgit.com"])
 
         main (["powerMulti"])
-        //details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate", "readingUpdated_str", "graphHTML", "graphHTML2", "refresh"])
         details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate", "readingUpdated_str", "graphHTML", "refresh"])
     }
 }
@@ -113,7 +112,6 @@ preferences {
 
 mappings {
     path("/getGraphHTML") {action: [GET: "getGraphHTML"]}
-    path("/getGraphHTML2") {action: [GET: "getGraphHTML2"]}
 }
 
 // parse events into attributes
@@ -164,10 +162,10 @@ def clearHistory() {
     state?.energyTableYesterday = null
     state?.powerTable = null
     state?.powerTableYesterday = null
+
 }
 
 private handleData(readingData, usageData) {
-
     //log.trace "handleData ($power, $energy)"
     try {
         def currentDay = new Date().format("dd",location?.timeZone)
@@ -226,14 +224,21 @@ private handleData(readingData, usageData) {
             //state.energyTable = []
             state.lastPower = 0
         }
+        log.debug "powerTable-(localVariable)(This is after being filled by state?.powerTable): $powerTable"
+        log.debug "state?.powerTable (before adding new values): ${state?.powerTable}"
         if (currentPower > 0 || powerTable?.size() != 0) {
             def newDate = new Date()
-            powerTable.add([newDate?.format("H", location?.timeZone),newDate.format("m", location?.timeZone),currentPower])
+            def eVal = null
+            if(!state?.lastEnergyReading || state?.lastEnergyReading != currentEnergy) {
+                state?.lastEnergyReading = currentEnergy
+                eVal = currentEnergy
+            }
+            powerTable.add([newDate?.format("YYYY-MM-DD HH:MM:SS", location?.timeZone),currentPower, eVal])
             //energyTable.add([newDate?.format("H", location?.timeZone),newDate?.format("m", location?.timeZone),energyToday])
+
             state.powerTable = powerTable
-            //state.energyTable = energyTable
+            log.debug "state?.powerTable(after adding in new values and writing back to state: ${state?.powerTable}"
         }
-        //addNewData(currentPower, currentEnergy)
     } catch (ex) {
         log.error "handleData Exception:", ex
     }
@@ -334,7 +339,7 @@ def debugOnEvent(debug) {
     def val = device.currentState("debugOn")?.value
     def dVal = debug ? "On" : "Off"
     state?.debugStatus = dVal
-    log.debug "debugStatus: ${state?.debugStatus}"
+    //log.debug "debugStatus: ${state?.debugStatus}"
     state?.debug = debug.toBoolean() ? true : false
     if(!val.equals(dVal)) {
         log.debug("UPDATED | debugOn: (${dVal}) | Original State: (${val.toString().capitalize()})")
@@ -348,7 +353,7 @@ def deviceVerEvent(ver) {
     def dVer = devTypeVer() ?: null
     def newData = isCodeUpdateAvailable(pubVer, dVer) ? "${dVer}(New: v${pubVer})" : "${dVer}"
     state?.devTypeVer = newData
-    log.debug "devTypeVer: ${state?.devTypeVer}"
+    //log.debug "devTypeVer: ${state?.devTypeVer}"
     state?.updateAvailable = isCodeUpdateAvailable(pubVer, dVer)
     if(!curData?.equals(newData)) {
         logWriter("UPDATED | Device Type Version is: (${newData}) | Original State: (${curData})")
@@ -360,7 +365,7 @@ def apiStatusEvent(issue) {
     def curStat = device.currentState("apiStatus")?.value
     def newStat = issue ? "issue" : "ok"
     state?.apiStatus = newStat
-    log.debug "apiStatus: ${state?.apiStatus}"
+    //log.debug "apiStatus: ${state?.apiStatus}"
     if(!curStat.equals(newStat)) {
         log.debug("UPDATED | API Status is: (${newStat.toString().capitalize()}) | Original State: (${curStat.toString().capitalize()})")
         sendEvent(name: "apiStatus", value: newStat, descriptionText: "API Status is: ${newStat}", displayed: true, isStateChange: true, state: newStat)
@@ -746,82 +751,4 @@ def hideChartHtml() {
     </div>
     """
     return data
-}
-
-
-def getGraphHTML2() {
-    try {
-
-        def html = """
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <meta http-equiv="cache-control" content="max-age=0"/>
-                <meta http-equiv="cache-control" content="no-cache"/>
-                <meta http-equiv="expires" content="0"/>
-                <meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT"/>
-                <meta http-equiv="pragma" content="no-cache"/>
-                <meta name="viewport" content="width = device-width, user-scalable=no, initial-scale=1.0">
-                <link rel="stylesheet prefetch" href="${getCssData()}"/>
-                <script type="text/javascript" src="${getChartJsData()}"></script>
-            </head>
-            <body>
-                ${updateAvail}
-
-                ${chartHtml}
-
-                <br></br>
-                <table>
-                <col width="49%">
-                <col width="49%">
-                <thead>
-                  <th>Hub Status</th>
-                  <th>API Status</th>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>${state?.hubStatus}</td>
-                    <td>${state?.apiStatus}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <p class="centerText">
-                <a href="#openModal" class="button">More info</a>
-              </p>
-
-              <div id="openModal" class="topModal">
-                <div>
-                  <a href="#close" title="Close" class="close">X</a>
-                  <table>
-                    <tr>
-                      <th>Hub Version</th>
-                      <th>Debug</th>
-                      <th>Device Type</th>
-                    </tr>
-                    <td>${state?.hubVersion.toString()}</td>
-                    <td>${state?.debugStatus}</td>
-                    <td>${state?.devTypeVer.toString()}</td>
-                    </tbody>
-                  </table>
-                  <table>
-                    <thead>
-                      <th>Hub Checked-In</th>
-                      <th>Data Last Received</th>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td class="dateTimeText">${state?.lastConnection.toString()}</td>
-                        <td class="dateTimeText">${state?.lastUpdatedDt.toString()}</td>
-                      </tr>
-                  </table>
-                </div>
-              </div>
-            </body>
-        </html>
-        """
-        render contentType: "text/html", data: html, status: 200
-    } catch (ex) {
-        log.error "graphHTML2 Exception:", ex
-    }
 }
