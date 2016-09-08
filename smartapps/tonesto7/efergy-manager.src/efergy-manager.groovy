@@ -38,7 +38,7 @@ definition(
 */
 
 def appVersion() { "3.0.1" }
-def appVerDate() { "8-30-2016" }
+def appVerDate() { "9-8-2016" }
 def appVerInfo() {
     def str = ""
 
@@ -472,7 +472,7 @@ def refresh() {
 
             updateDeviceData()
             LogAction("", "info", false)
-            //runIn(27, "checkSchedule")
+            runIn(27, "checkSchedule")
         }
         else if (atomicState?.timeSinceRfsh > 360 || !atomicState?.timeSinceRfsh) { checkSchedule() }
     }
@@ -583,16 +583,16 @@ def updateDeviceData() {
                     dev?.generateEvent(devData) //parse received message from parent
                 }
             } else {
-                if(!atomicState?.usageData != null) {
+                if(atomicState?.usageData == null) {
                     log.warn("updateDeviceData:  Missing UsageData.  Skipping Device Update...")
                 }
-                if(!atomicState?.tariffData != null) {
+                if(atomicState?.tariffData == null) {
                     log.warn("updateDeviceData:  Missing TariffData.  Skipping Device Update...")
                 }
-                if(!atomicState?.readingData != null) {
+                if(atomicState?.readingData == null) {
                     log.warn("updateDeviceData:  Missing ReadingData.  Skipping Device Update...")
                 }
-                if(!atomicState?.hubData != null) {
+                if(atomicState?.hubData == null) {
                     log.warn("updateDeviceData:  Missing HubData.  Skipping Device Update...")
                 }
             }

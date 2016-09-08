@@ -16,11 +16,9 @@
 */
 
 import java.text.SimpleDateFormat
-//import groovy.time.TimeCategory
-//import groovy.time.TimeDuration
 
-def devTypeVer() {"3.0.0"}
-def versionDate() {"8-30-2016"}
+def devTypeVer() {"3.0.1"}
+def versionDate() {"9-8-2016"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -136,8 +134,7 @@ def generateEvent(Map eventData) {
     try {
         if(eventData) {
             //log.debug "eventData: $eventData"
-            //clearHistory()
-            //state.timeZone = !location?.timeZone ? eventData?.tz : location?.timeZone
+            //state.timeZone = !location.timeZone ? eventData?.tz : location.timeZone <<<  This is causing stack overflow errors for the platform
             state?.monthName = eventData?.monthName
             state?.currencySym = eventData?.currencySym
             debugOnEvent(eventData?.debug ? true : false)
@@ -145,8 +142,7 @@ def generateEvent(Map eventData) {
             updateAttributes(eventData?.readingData, eventData?.usageData, eventData?.tariffData, eventData?.hubData)
             handleData(eventData?.readingData, eventData?.usageData)
             apiStatusEvent(eventData?.apiIssues)
-            if(!eventData?.hubData?.hubTsHuman) { lastCheckinEvent(null) }
-            else { lastCheckinEvent(eventData?.hubTsHuman) }
+            lastCheckinEvent(eventData?.hubData?.hubTsHuman)
         }
         lastUpdatedEvent()
         return null
@@ -158,17 +154,17 @@ def generateEvent(Map eventData) {
 
 def clearHistory() {
     log.trace "Clearing History..."
-    state?.energyTable = null
-    state?.energyTableYesterday = null
-    state?.powerTable = null
-    state?.powerTableYesterday = null
-
+    state?.usageTable = null
+    state?.usageTableYesterday = null
 }
 
 private handleData(readingData, usageData) {
     //log.trace "handleData ($power, $energy)"
-    clearHistory()
+    //clearHistory()
     try {
+        state?.powerTable = null
+        state?.energyTable = null
+
         def currentDay = new Date().format("dd",location?.timeZone)
         if(state?.currentDay == null) { state?.currentDay = currentDay }
         def currentEnergy = usageData?.todayUsage
@@ -196,22 +192,15 @@ private handleData(readingData, usageData) {
             sendEvent(name: "minPowerReading", value: currentPower, unit: "kWh", description: "Lowest Power Reading is $currentPower kWh", display: false, displayed: false)
             logWriter("minPowerReading: ${state?.minPowerReading}W")
         }
-        if(state?.powerTable == null) {
-            //runIn(66, "getPastData", [overwrite: false])
-            //Attempts to populate the power table with previous power events from today
-            //runIn(23, "getTodaysData", [overwrite: false])
 
-            state?.powerTable = []
-            state?.energyTable = []
-            //addNewData(currentPower, currentEnergy)
+        if(state?.usageTable == null) {
+            state?.usageTable = []
         }
 
-        def powerTable = state?.powerTable
-        def energyTable = state?.energyTable
+        def usageTable = state?.usageTable
 
-        if (state?.powerTableYesterday?.size() == 0) {
-            state.powerTableYesterday = powerTable
-            state.energyTableYesterday = energyTable
+        if (state?.usageTableYesterday?.size() == 0) {
+            state.usageTableYesterday = usageTable
         }
 
         if (!state?.currentDay || state.currentDay != currentDay) {
@@ -219,32 +208,25 @@ private handleData(readingData, usageData) {
             state?.minPowerReading = currentPower
             state?.maxPowerReading = currentPower
             state.currentDay = currentDay
-            state.powerTableYesterday = powerTable
-            state.energyTableYesterday = energyTable
-            state.powerTable = []
-            state.energyTable = []
+            state.usageTableYesterday = usageTable
+            handleNewDay()
             state.lastPower = 0
-        }
-        //log.debug "powerTable-(localVariable)(This is after being filled by state?.powerTable): $powerTable"
-        //log.debug "state?.powerTable (before adding new values): ${state?.powerTable}"
-        if (currentPower > 0 || powerTable?.size() != 0) {
-            def newDate = new Date()
-            def eVal = null
-            if(!state?.lastEnergyReading || state?.lastEnergyReading != currentEnergy) {
-                state?.lastEnergyReading = currentEnergy
-                eVal = currentEnergy
-            }
-            powerTable.add([newDate?.format("yyyy-MM-dd hh:mm:ss", location?.timeZone),currentPower])
-            energyTable.add([newDate?.format("yyyy-MM-dd hh:mm:ss", location?.timeZone), eVal])
 
-            state.powerTable = powerTable
-            state.energyTable = energyTable
-            log.debug "$powerTable"
-            //log.debug "state?.powerTable(after adding in new values and writing back to state: ${state?.powerTable}"
+        }
+        if (currentPower > 0 || usageTable?.size() != 0) {
+            def newDate = new Date()
+            usageTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), newDate.format("ss", location.timeZone), currentEnergy, currentPower])
+            state.usageTable = usageTable
+            //log.debug "$usageTable"
         }
     } catch (ex) {
         log.error "handleData Exception:", ex
     }
+}
+
+private handleNewDay() {
+
+    state.usageTable = []
 }
 
 def updateAttributes(rData, uData, tData, hData) {
@@ -303,23 +285,24 @@ def updateAttributes(rData, uData, tData, hData) {
     logWriter("hubStatus: " + hData?.hubStatus)
     logWriter("hubName: " + hData?.hubName)
     logWriter("")
-    state.hubStatus = hData?.hubStatus
+    state.hubStatus = (hData?.hubStatus == "on") ? "Active" : "InActive"
     state.hubVersion = hData?.hubVersion
+    state.hubName = hData?.hubName
     sendEvent(name: "hubVersion", value: hData?.hubVersion, display: false, displayed: false)
     sendEvent(name: "hubStatus", value: hData?.hubStatus, display: false, displayed: false)
     sendEvent(name: "hubName", value: hData?.hubName, display: false, displayed: false)
 }
 
 def lastCheckinEvent(checkin) {
-    //log.trace "lastCheckinEvent()..."
+    //log.trace "lastCheckinEvent($checkin)..."
     def formatVal = "MMM d, yyyy - h:mm:ss a"
     def tf = new SimpleDateFormat(formatVal)
-    tf.setTimeZone(getTimeZone())
-    def lastConn = checkin ? "${tf?.format(Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", checkin))}" : "Not Available"
+        tf.setTimeZone(location.timeZone)
+    def lastConn = checkin ? "${tf?.format(Date.parse("E MMM dd HH:mm:ss z yyyy", checkin))}" : "Not Available"
     def lastChk = device.currentState("lastConnection")?.value
     state?.lastConnection = lastConn?.toString()
     if(!lastChk.equals(lastConn?.toString())) {
-        log.debug("UPDATED | Last Hub Check-in was: (${lastConn}) | Original State: (${lastChk})")
+        logWriter("UPDATED | Last Hub Check-in was: (${lastConn}) | Original State: (${lastChk})")
         sendEvent(name: 'lastConnection', value: lastConn?.toString(), displayed: false, isStateChange: true)
     } else { logWriter("Last Hub Check-in was: (${lastConn}) | Original State: (${lastChk})") }
 }
@@ -366,7 +349,7 @@ def deviceVerEvent(ver) {
 
 def apiStatusEvent(issue) {
     def curStat = device.currentState("apiStatus")?.value
-    def newStat = issue ? "issue" : "ok"
+    def newStat = issue ? "Problems" : "Good"
     state?.apiStatus = newStat
     //log.debug "apiStatus: ${state?.apiStatus}"
     if(!curStat.equals(newStat)) {
@@ -406,7 +389,7 @@ def isCodeUpdateAvailable(newVer, curVer) {
 
 def getTimeZone() {
     def tz = null
-    if (location?.timeZone) { tz = location?.timeZone }
+    if (location?.timeZone) { tz = location.timeZone }
     if(!tz) { log.warn "getTimeZone: TimeZone is not found ..." }
     return tz
 }
@@ -446,26 +429,20 @@ def Logger(msg, type="debug") {
 /*************************************************************
 |                  HTML TILE RENDER FUNCTIONS                |
 **************************************************************/
-String getDataString(Integer seriesIndex) {
+String getDataString(Integer seriesIndex, Integer itemIndex) {
     def dataString = ""
     def dataTable = []
     switch (seriesIndex) {
         case 1:
-            dataTable = state.energyTableYesterday
+            dataTable = state.usageTableYesterday
             break
         case 2:
-            dataTable = state.powerTableYesterday
-            break
-        case 3:
-            dataTable = state.energyTable
-            break
-        case 4:
-            dataTable = state.powerTable
+            dataTable = state.usageTable
             break
     }
-    dataTable.each() {
-        def dataArray = [[it[0],it[1],0],null,null,null,null]
-        dataArray[seriesIndex] = it[2]
+    dataTable?.each() {
+        def dataArray = [[it[0],it[1],it[2]],null,null,null,null]
+        dataArray[itemIndex] = it[itemIndex]
         dataString += dataArray.toString() + ","
     }
     return dataString
@@ -564,7 +541,7 @@ def getChartJsData() {
     return chartJsData
 }
 
-def cssUrl() { return "https://dl.dropboxusercontent.com/s/bg3o43vntlvqi5n/efergydevice.css" }
+def cssUrl() { return "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/style.css" }//"https://dl.dropboxusercontent.com/s/bg3o43vntlvqi5n/efergydevice.css" }
 
 def chartJsUrl() { return "https://www.gstatic.com/charts/loader.js" }
 
@@ -572,33 +549,32 @@ def getImg(imgName) { return imgName ? "https://cdn.rawgit.com/tonesto7/efergy-m
 
 def getStartTime() {
     def startTime = 24
-    if (state?.powerTable?.size()) { startTime = state?.powerTable?.min{it[0].toInteger()}[0].toInteger() }
-    if (state?.powerTableYesterday?.size()) { startTime = Math.min(startTime, state?.powerTableYesterday?.min{it[0].toInteger()}[0].toInteger()) }
-    log.trace "startTime ${startTime}"
+    if (state?.usageTable?.size()) { startTime = state?.usageTable?.min{it[0].toInteger()}[0].toInteger() }
+    if (state?.usageTableYesterday?.size()) { startTime = Math.min(startTime, state?.usageTableYesterday?.min{it[0].toInteger()}[0].toInteger()) }
+    //log.trace "startTime ${startTime}"
     return startTime
 }
 
 def getMinVal() {
     def list = []
-    if (state?.powerTableYesterday?.size() > 0) { list.add(state?.powerTableYesterday?.min { it[2] }[2].toInteger()) }
-    if (state?.powerTable?.size() > 0) { list.add(state?.powerTable.min { it[2] }[2].toInteger()) }
-    log.trace "getMinVal: ${list.min()} result: ${list}"
+    if (state?.usageTableYesterday?.size() > 0) { list.add(state?.usageTableYesterday?.min { it[2] }[2].toInteger()) }
+    if (state?.usageTable?.size() > 0) { list.add(state?.usageTable.min { it[2] }[2].toInteger()) }
+    //log.trace "getMinVal: ${list.min()} result: ${list}"
     return list?.min()
 }
 
 def getMaxVal() {
     def list = []
-    if (state?.powerTableYesterday?.size() > 0) { list.add(state?.powerTableYesterday.max { it[2] }[2].toInteger()) }
-    if (state?.powerTable?.size() > 0) { list.add(state?.powerTable.max { it[2] }[2].toInteger()) }
-    log.trace "getMaxVal: ${list.max()} result: ${list}"
+    if (state?.usageTableYesterday?.size() > 0) { list.add(state?.usageTableYesterday.max { it[2] }[2].toInteger()) }
+    if (state?.usageTable?.size() > 0) { list.add(state?.usageTable.max { it[2] }[2].toInteger()) }
+    //log.trace "getMaxVal: ${list.max()} result: ${list}"
     return list?.max()
 }
 
 def getGraphHTML() {
     try {
-        def updateAvail = !state.updateAvailable ? "" : "<h3>Device Update Available!</h3>"
-        def chartHtml = (state.powerTable?.size() > 0) ? showChartHtml() : hideChartHtml()
-        log.debug "apiStatus: ${state?.apiStatus}"
+        def updateAvail = !state?.updateAvailable ? "" : """<h3 style="background: #ffa500;">Device Update Available!</h3>"""
+        def chartHtml = (state?.usageTable?.size() > 0) ? showChartHtml() : hideChartHtml()
         def html = """
         <!DOCTYPE html>
         <html>
@@ -642,6 +618,13 @@ def getGraphHTML() {
                   <a href="#close" title="Close" class="close">X</a>
                   <table>
                     <tr>
+                      <th>Hub Name</th>
+                    </tr>
+                    <td>${state?.hubName}</td>
+                    </tbody>
+                  </table>
+                  <table>
+                    <tr>
                       <th>Hub Version</th>
                       <th>Debug</th>
                       <th>Device Type</th>
@@ -681,20 +664,24 @@ def showChartHtml() {
         function drawGraph() {
       var data = new google.visualization.DataTable();
       data.addColumn('timeofday', 'time');
-      data.addColumn('number', 'Energy (Yesterday)');
-      data.addColumn('number', 'Power (Yesterday)');
-      data.addColumn('number', 'Energy (Today)');
-      data.addColumn('number', 'Power (Today)');
+      data.addColumn('number', 'Energy (kWh)(Y)');
+      data.addColumn('number', 'Power (W)(Y)');
+      data.addColumn('number', 'Energy (kWh)');
+      data.addColumn('number', 'Power (W)');
       data.addRows([
-        ${getDataString(1)}
-        ${getDataString(2)}
-        ${getDataString(3)}
-        ${getDataString(4)}
+        ${getDataString(1,3)}
+        ${getDataString(1,4)}
+        ${getDataString(2,3)}
+        ${getDataString(2,4)}
       ]);
       var options = {
         fontName: 'San Francisco, Roboto, Arial',
         width: '100%',
         height: '100%',
+        animation: {
+          duration: 1500,
+          startup: true
+        },
         hAxis: {
           format: 'H:mm',
           minValue: [${getStartTime()},0,0],
@@ -702,35 +689,35 @@ def showChartHtml() {
           slantedTextAngle: 30
         },
         series: {
-          0: {targetAxisIndex: 1, color: '#FFC2C2', lineWidth: 1},
-          1: {targetAxisIndex: 0, color: '#D1DFFF', lineWidth: 1},
-          2: {targetAxisIndex: 1, color: '#FF0000'},
-          3: {targetAxisIndex: 0, color: '#004CFF'}
+          0: {targetAxisIndex: 1, color: '#cbe5a9', lineWidth: 1, visibleInLegend: false},
+          1: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
+          2: {targetAxisIndex: 1, color: '#8CC63F'},
+          3: {targetAxisIndex: 0, color: '#F8971D'}
         },
         vAxes: {
           0: {
-            title: 'Power (W)',
+            title: 'Power Used (W)',
             format: 'decimal',
-            textStyle: {color: '#004CFF'},
-            titleTextStyle: {color: '#004CFF'}
+            textStyle: {color: '#F8971D'},
+            titleTextStyle: {color: '#F8971D'}
           },
           1: {
-            title: 'Energy (kWh)',
+            title: 'Energy Consumed (kWh)',
             format: 'decimal',
-            textStyle: {color: '#FF0000'},
-            titleTextStyle: {color: '#FF0000'}
+            textStyle: {color: '#8CC63F'},
+            titleTextStyle: {color: '#8CC63F'}
           }
         },
         legend: {
-          position: 'bottom',
+          position: 'none',
           maxLines: 4
         },
         chartArea: {
           left: '12%',
-          right: '18%',
-          top: '3%',
-          bottom: '20%',
-          height: '85%',
+          right: '15%',
+          top: '5%',
+          bottom: '15%',
+          height: '100%',
           width: '100%'
         }
       };
@@ -738,7 +725,7 @@ def showChartHtml() {
       chart.draw(data, options);
     }
       </script>
-      <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #00a1db; color: #f5f5f5;">Usage History</h4>
+      <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC63F; color: #f5f5f5;">Usage History</h4>
       <div id="chart_div" style="width: 100%; height: 225px;"></div>
     """
     return data
@@ -746,11 +733,11 @@ def showChartHtml() {
 
 def hideChartHtml() {
     def data = """
-    <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #00a1db; color: #f5f5f5;">Usage History</h4>
+    <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC63F; color: #f5f5f5;">Usage History</h4>
     <br></br>
     <div class="centerText">
       <p>Waiting for more data to be collected...</p>
-      <p>This may take at least 24 hours</p>
+      <p>This may take a little while...</p>
     </div>
     """
     return data
