@@ -31,6 +31,8 @@ metadata {
 
         attribute "maxPowerReading", "string"
         attribute "minPowerReading", "string"
+        attribute "maxEnergyReading", "string"
+        attribute "minEnergyReading", "string"
         attribute "readingUpdated", "string"
         attribute "apiStatus", "string"
         attribute "devTypeVer", "string"
@@ -76,7 +78,9 @@ metadata {
         valueTile("tariffRate", "device.tariffRate", width: 3, height: 1, decoration: "flat", wordWrap: true) {
             state "default", label: 'Tariff Rate:\n${currentValue}/kWH'
         }
-
+        valueTile("tariffRate_str", "device.tariffRate_str", width: 3, height: 1, decoration: "flat", wordWrap: true) {
+            state "default", label: '${currentValue}'
+        }
         valueTile("hubStatus", "device.hubStatus", width: 2, height: 1, decoration: "flat", wordWrap: true) {
             state "default", label: 'Hub Status:\n${currentValue}'
         }
@@ -100,7 +104,7 @@ metadata {
         htmlTile(name:"graphHTML2", action: "getGraphHTML2", width: 6, height: 8, whitelist: ["www.gstatic.com", "raw.githubusercontent.com", "cdn.rawgit.com"])
 
         main (["powerMulti"])
-        details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate", "readingUpdated_str", "graphHTML", "refresh"])
+        details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate_str", "readingUpdated_str", "graphHTML", "refresh"])
     }
 }
 
@@ -136,7 +140,7 @@ def generateEvent(Map eventData) {
             //log.debug "eventData: $eventData"
             //state.timeZone = !location.timeZone ? eventData?.tz : location.timeZone <<<  This is causing stack overflow errors for the platform
             state?.monthName = eventData?.monthName
-            state?.currencySym = eventData?.currencySym
+            state?.currency = eventData?.currency
             debugOnEvent(eventData?.debug ? true : false)
             deviceVerEvent(eventData?.latestVer.toString())
             updateAttributes(eventData?.readingData, eventData?.usageData, eventData?.tariffData, eventData?.hubData)
@@ -162,16 +166,16 @@ private handleData(readingData, usageData) {
     //log.trace "handleData ($power, $energy)"
     //clearHistory()
     try {
-        state?.powerTable = null
-        state?.energyTable = null
-
-        def currentDay = new Date().format("dd",location?.timeZone)
+        def currentDay = new Date().format("dd", location.timeZone)
+        def currentMonth = new Date().format("MM", location.timeZone)
         if(state?.currentDay == null) { state?.currentDay = currentDay }
+        if(state?.currentMonth == null) { state?.currentMonth = currentMonth }
         def currentEnergy = usageData?.todayUsage
         def currentPower = readingData?.powerReading
 
-        logWriter("currentDay: $currentDay")
-        logWriter("currentDay(state): ${state?.currentDay}")
+        logWriter("currentDay: $currentDay | (state): ${state?.currentDay}")
+        logWriter("currentMonth: $currentMonth | (state): ${state?.currentMonth}")
+
         logWriter("currentPower: $currentPower")
         logWriter("currentEnergy: $currentEnergy")
 
@@ -184,17 +188,32 @@ private handleData(readingData, usageData) {
 
         if (state.maxPowerReading <= currentPower) {
             state.maxPowerReading = currentPower
-            sendEvent(name: "maxPowerReading", value: currentPower, unit: "kWh", description: "Highest Power Reading is $currentPower kWh", display: false, displayed: false)
+            sendEvent(name: "maxPowerReading", value: currentPower, unit: "W", description: "Highest Power Reading is $currentPower W", display: false, displayed: false)
             logWriter("maxPowerReading: ${state?.maxPowerReading}W")
         }
         if (state.minPowerReading >= currentPower) {
             state.minPowerReading = currentPower
-            sendEvent(name: "minPowerReading", value: currentPower, unit: "kWh", description: "Lowest Power Reading is $currentPower kWh", display: false, displayed: false)
+            sendEvent(name: "minPowerReading", value: currentPower, unit: "W", description: "Lowest Power Reading is $currentPower W", display: false, displayed: false)
             logWriter("minPowerReading: ${state?.minPowerReading}W")
+        }
+        if (state.maxEnergyReading <= currentEnergy) {
+            state.maxEnergyReading = currentEnergy
+            sendEvent(name: "maxEnergyReading", value: currentEnergy, unit: "kWh", description: "Highest Day Energy Consumption is $currentEnergy kWh", display: false, displayed: false)
+            logWriter("maxEnergyReading: ${state?.maxEnergyReading}W")
+        }
+        if (state.minPowerReading >= currentEnergy) {
+            state.minPowerReading = currentEnergy
+            sendEvent(name: "minEnergyReading", value: currentEnergy, unit: "kWh", description: "Lowest Day Energy Consumption is $currentEnergy kWh", display: false, displayed: false)
+            logWriter("minEnergyReading: ${state?.minEnergyReading} kWh")
         }
 
         if(state?.usageTable == null) {
             state?.usageTable = []
+            state?.dayMinPowerTable = []
+            state?.dayMaxPowerTable = []
+            state?.dayMinEnergyTable = []
+            state?.dayMaxEnergyTable = []
+            state?.dailyPowerAvgTable = []
         }
 
         def usageTable = state?.usageTable
@@ -205,28 +224,94 @@ private handleData(readingData, usageData) {
 
         if (!state?.currentDay || state.currentDay != currentDay) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
-            state?.minPowerReading = currentPower
-            state?.maxPowerReading = currentPower
-            state.currentDay = currentDay
             state.usageTableYesterday = usageTable
-            handleNewDay()
-            state.lastPower = 0
-
+            handleNewDay(currentPower, currentEnergy)
+            state.currentDay = currentDay
         }
+        if (!state?.currentMonth || state.currentMonth != currentMonth) {
+            log.debug "currentMonth ($currentMonth) is != to State (${state?.currentMonth})"
+
+            handleNewMonth()
+            state.currentMonth = currentMonth
+        }
+
         if (currentPower > 0 || usageTable?.size() != 0) {
             def newDate = new Date()
             usageTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), newDate.format("ss", location.timeZone), currentEnergy, currentPower])
             state.usageTable = usageTable
             //log.debug "$usageTable"
         }
+
     } catch (ex) {
         log.error "handleData Exception:", ex
     }
 }
 
-private handleNewDay() {
+private handleNewDay(curPow, curEner) {
+    def dayMinPowerTable = state?.dayMinPowerTable
+    def dayMaxPowerTable = state?.dayMaxPowerTable
+    def dayMinEnergyTable = state?.dayMinEnergyTable
+    def dayMaxEnergyTable = state?.dayMaxEnergyTable
+
+    dayMinPowerTable.add(state?.minPowerReading)
+    dayMaxPowerTable.add(state?.maxPowerReading)
+    dayMinEnergyTable.add(state?.minEnergyReading)
+    dayMaxEnergyTable.add(state?.maxEnergyReading)
+
+    state?.minPowerReading = curPow
+    state?.maxPowerReading = curPow
+    state?.minEnergyReading = curEner
+    state?.maxEnergyReading = curEner
+
+    state?.dayMinPowerTable = dayMinPowerTable
+    state?.dayMaxPowerTable = dayMaxPowerTable
+    state?.dayMinEnergyTable = dayMinEnergyTable
+    state?.dayMaxEnergyTable = dayMaxEnergyTable
+
+    def dailyPowerAvgTable = state?.dailyPowerAvgTable
+    if(getDayPowerAvg() != null) {
+        dailyPowerAvgTable.add(getDayPowerAvg())
+    }
+    state?.dailyPowerAvgTable = dailyPowerAvgTable
 
     state.usageTable = []
+    state.lastPower = 0
+}
+
+def handleNewMonth() {
+
+}
+
+def getDayPowerAvg() {
+    try {
+        def result = null
+        if(state?.usageTable?.size() >= 2) {
+            def avgTmp = []
+            state?.usageTable?.each() {
+                if(it[4] != null) {
+                    avgTmp?.add(it[4])
+                }
+            }
+            if(avgTmp?.size() >= 2) {
+                result = getAverage(avgTmp)
+            }
+        }
+        return result
+    } catch (ex) {
+        log.error "getDayPowerAvg Exception:", ex
+    }
+}
+
+
+def getAverage(items) {
+    def tmpAvg = []
+    def tmpVal = 0
+	if(!items) { return tmpVal }
+	else if(items?.size() > 1) {
+		tmpAvg = items
+		if(tmpAvg && tmpAvg?.size() > 1) { tmpVal = (tmpAvg?.sum() / tmpAvg?.size()) }
+	}
+	return tmpVal.toInteger()
 }
 
 def updateAttributes(rData, uData, tData, hData) {
@@ -249,22 +334,22 @@ def updateAttributes(rData, uData, tData, hData) {
     def budgPercent
     logWriter("--------------UPDATE USAGE DATA-------------")
     logWriter("todayUsage: " + uData?.todayUsage + "kWh")
-    logWriter("todayCost: " + state?.currencySym + uData?.todayCost)
+    logWriter("todayCost: " + state?.currency?.dollar + uData?.todayCost)
     logWriter("monthUsage: " + uData?.monthUsage + " kWh")
-    logWriter("monthCost: " + state?.currencySym + uData?.monthCost)
-    logWriter("monthEst: " + state?.currencySym + uData?.monthEst)
-    logWriter("monthBudget: " + state?.currencySym + uData?.monthBudget)
+    logWriter("monthCost: " + state?.currency?.dollar + uData?.monthCost)
+    logWriter("monthEst: " + state?.currency?.dollar + uData?.monthEst)
+    logWriter("monthBudget: " + state?.currency?.dollar + uData?.monthBudget)
 
-    sendEvent(name: "todayUsage_str", value: "${state?.currencySym}${uData?.todayCost} (${uData?.todayUsage} kWH)", display: false, displayed: false)
-    sendEvent(name: "monthUsage_str", value: "${state?.monthName}\'s Usage:\n${state?.currencySym}${uData?.monthCost} (${uData?.monthUsage} kWh)", display: false, displayed: false)
-    sendEvent(name: "monthEst_str",   value: "${state?.monthName}\'s Bill (Est.):\n${state?.currencySym}${uData?.monthEst}", display: false, displayed: false)
-    sendEvent(name: "todayUsage", value: uData?.todayUsage, unit: state?.currencySym, display: false, displayed: false)
-    sendEvent(name: "monthUsage", value: uData?.monthUsage, unit: state?.currencySym, display: false, displayed: false)
-    sendEvent(name: "monthEst",   value: uData?.monthEst, unit: state?.currencySym, display: false, displayed: false)
+    sendEvent(name: "todayUsage_str", value: "${state?.currency?.dollar}${uData?.todayCost} (${uData?.todayUsage} kWH)", display: false, displayed: false)
+    sendEvent(name: "monthUsage_str", value: "${state?.monthName}\'s Usage:\n${state?.currency?.dollar}${uData?.monthCost} (${uData?.monthUsage} kWh)", display: false, displayed: false)
+    sendEvent(name: "monthEst_str",   value: "${state?.monthName}\'s Bill (Est.):\n${state?.currency?.dollar}${uData?.monthEst}", display: false, displayed: false)
+    sendEvent(name: "todayUsage", value: uData?.todayUsage, unit: state?.currency?.dollar, display: false, displayed: false)
+    sendEvent(name: "monthUsage", value: uData?.monthUsage, unit: state?.currency?.dollar, display: false, displayed: false)
+    sendEvent(name: "monthEst",   value: uData?.monthEst, unit: state?.currency?.dollar, display: false, displayed: false)
 
     if (uData?.monthBudget > 0) {
         budgPercent = Math.round(Math.round(uData?.monthCost?.toFloat()) / Math.round(uData?.monthBudget?.toFloat()) * 100)
-        sendEvent(name: "budgetPercentage_str", value: "Monthly Budget:\nUsed ${budgPercent}% (${state?.currencySym}${uData?.monthCost}) of ${state?.currencySym}${uData?.monthBudget} ", display: false, displayed: false)
+        sendEvent(name: "budgetPercentage_str", value: "Monthly Budget:\nUsed ${budgPercent}% (${state?.currency?.dollar}${uData?.monthCost}) of ${state?.currency?.dollar}${uData?.monthBudget} ", display: false, displayed: false)
         sendEvent(name: "budgetPercentage", value: budgPercent, unit: "%", description: "Percentage of Budget User is (${budgPercent}%)", display: false, displayed: false)
     } else {
         budgPercent = 0
@@ -275,9 +360,10 @@ def updateAttributes(rData, uData, tData, hData) {
 
     //Tariff Info
     logWriter("--------------UPDATE TARIFF DATA-------------")
-    logWriter("tariff rate: " + tData?.tariffRate)
+    logWriter("tariff rate: " + tData?.tariffRate + state?.currency?.cent.toString())
     logWriter("")
-    sendEvent(name: "tariffRate", value: tData?.tariffRate, unit: state?.currencySym, description: "Tariff Rate is ${state?.currencySym}${tData?.tariffRate}", display: false, displayed: false)
+    sendEvent(name: "tariffRate", value: tData?.tariffRate, unit: state?.currency?.cent.toString(), description: "Tariff Rate is ${tData?.tariffRate}${state?.currency?.cent.toString()}/kWh", display: false, displayed: false)
+    sendEvent(name: "tariffRate_str", value: "Tariff Rate:\n${tData?.tariffRate}${state?.currency?.cent}/kWh", description: "Tariff Rate is ${tData?.tariffRate}${state?.currency?.cent.toString()}/kWh", display: false, displayed: false)
 
     //Updates Hub INFO Tiles
     logWriter("--------------UPDATE HUB DATA-------------")
@@ -555,18 +641,18 @@ def getStartTime() {
     return startTime
 }
 
-def getMinVal() {
+def getMinVal(Integer item) {
     def list = []
-    if (state?.usageTableYesterday?.size() > 0) { list.add(state?.usageTableYesterday?.min { it[2] }[2].toInteger()) }
-    if (state?.usageTable?.size() > 0) { list.add(state?.usageTable.min { it[2] }[2].toInteger()) }
+    if (state?.usageTableYesterday?.size() > 0) { list.add(state?.usageTableYesterday?.min { it[item] }[item].toInteger()) }
+    if (state?.usageTable?.size() > 0) { list.add(state?.usageTable.min { it[item] }[item].toInteger()) }
     //log.trace "getMinVal: ${list.min()} result: ${list}"
     return list?.min()
 }
 
-def getMaxVal() {
+def getMaxVal(Integer item) {
     def list = []
-    if (state?.usageTableYesterday?.size() > 0) { list.add(state?.usageTableYesterday.max { it[2] }[2].toInteger()) }
-    if (state?.usageTable?.size() > 0) { list.add(state?.usageTable.max { it[2] }[2].toInteger()) }
+    if (state?.usageTableYesterday?.size() > 0) { list.add(state?.usageTableYesterday.max { it[item] }[item].toInteger()) }
+    if (state?.usageTable?.size() > 0) { list.add(state?.usageTable.max { it[item] }[item].toInteger()) }
     //log.trace "getMaxVal: ${list.max()} result: ${list}"
     return list?.max()
 }
@@ -697,6 +783,8 @@ def showChartHtml() {
         vAxes: {
           0: {
             title: 'Power Used (W)',
+            minValue: [${getMinVal(4)}],
+            maxValue: [${getMaxVal(4)}+10],
             format: 'decimal',
             textStyle: {color: '#F8971D'},
             titleTextStyle: {color: '#F8971D'}
@@ -704,6 +792,8 @@ def showChartHtml() {
           1: {
             title: 'Energy Consumed (kWh)',
             format: 'decimal',
+            minValue: [${getMinVal(3)}],
+            maxValue: [${getMaxVal(3)}+10],
             textStyle: {color: '#8CC63F'},
             titleTextStyle: {color: '#8CC63F'}
           }

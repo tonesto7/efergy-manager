@@ -573,7 +573,7 @@ def updateDeviceData() {
                         "hubData":atomicState?.hubData,
                         "monthName":atomicState?.monthName.toString(),
                         "debug":dbg,
-                        "currencySym":atomicState?.currencySym?.toString(),
+                        "currency":["dollar":atomicState?.currencySym.toString(), "cent":atomicState?.centSym.toString()],
                         "tz":getTimeZone(),
                         "latestVer":latestDevVer()?.ver?.toString(),
                         "apiIssues":api
