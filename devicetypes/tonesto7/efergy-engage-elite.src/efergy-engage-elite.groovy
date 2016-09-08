@@ -137,7 +137,7 @@ def generateEvent(Map eventData) {
         if(eventData) {
             //log.debug "eventData: $eventData"
             //clearHistory()
-            state.timeZone = !location?.timeZone ? eventData?.tz : location?.timeZone
+            //state.timeZone = !location?.timeZone ? eventData?.tz : location?.timeZone
             state?.monthName = eventData?.monthName
             state?.currencySym = eventData?.currencySym
             debugOnEvent(eventData?.debug ? true : false)
@@ -165,85 +165,9 @@ def clearHistory() {
 
 }
 
-private oldhandleData(readingData, usageData) {
-    //log.trace "handleData ($power, $energy)"
-    try {
-        def curDayNum = new Date().format("dd",location?.timeZone)
-        if(state?.todayNum == null) { state?.todayNum = curDayNum }
-        def energyToday = usageData?.todayUsage
-        def currentPower = readingData?.powerReading
-
-        logWriter("--------handleData START-------")
-        logWriter("curDayNum: $curDayNum")
-        logWriter("todayNum(state): ${state?.todayNum}")
-        logWriter("energyToday: $energyToday")
-        logWriter("currentPower: $currentPower")
-        logWriter("powerTable(state): ${state?.powerTable}")
-        logWriter("energyTable(state): ${state?.energyTable}")
-
-        def powerTable
-        def energyTable
-        if(state?.powerTable) { powerTable = state?.powerTable }
-        if(state?.energyTable) { energyTable = state?.energyTable }
-
-        if (state.todayNum != curDayNum) {
-            state?.minPowerReading = currentPower
-            state?.maxPowerReading = currentPower
-            state.todayNum = curDayNum
-            state.powerTableYesterday = powerTable
-            state.energyTableYesterday = energyTable
-            powerTable = powerTable ? [] : null
-            energyTable = energyTable ? [] : null
-            state.lastPower = 0
-        }
-
-        state.lastPower = currentPower
-        logWriter("lastPower: ${state?.lastPower}")
-        def previousPower = (state?.lastPower != null) ? state?.lastPower : currentPower
-        logWriter("previousPower: $previousPower")
-        def powerChange = currentPower.toInteger() - previousPower.toInteger()
-        logWriter("powerChange: $powerChange")
-
-        if (state.maxPowerReading <= currentPower) {
-            state.maxPowerReading = currentPower
-            sendEvent(name: "maxPowerReading", value: currentPower, unit: "kWh", description: "Highest Power Reading is $currentPower kWh", display: false, displayed: false)
-            logWriter("maxPowerReading: ${state?.maxPowerReading}W")
-        }
-        if (state.minPowerReading >= currentPower) {
-            state.minPowerReading = currentPower
-            sendEvent(name: "minPowerReading", value: currentPower, unit: "kWh", description: "Lowest Power Reading is $currentPower kWh", display: false, displayed: false)
-            logWriter("minPowerReading: ${state?.minPowerReading}W")
-        }
-
-          if (state?.powerTableYesterday == null || state?.energyTableYesterday == null || powerTable == null || energyTable == null) {
-            if (state?.powerTableYesterday == null || state?.energyTableYesterday == null) {
-                //runIn(7, "getPastData", [overwrite: false])
-            }
-            if (powerTable == null || energyTable == null) {
-                //runIn(17, "getTodaysData", [overwrite: false])
-            }
-        }
-        // add latest power & energy readings for the graph
-        if (currentPower > 0 || powerTable?.size() != 0) {
-            def newDate = new Date()
-            powerTable.add([newDate?.format("H", location?.timeZone),newDate.format("m", location?.timeZone),currentPower])
-            energyTable.add([newDate?.format("H", location?.timeZone),newDate?.format("m", location?.timeZone),energyToday])
-
-        }
-        state.powerTable = powerTable
-        state.energyTable = energyTable
-        logWriter("powerTable(OUT): $powerTable")
-        logWriter("energyTable(OUT): $energyTable")
-        logWriter("------handleData END------")
-    } catch (ex) {
-        log.error "handleData Exception:", ex
-    }
-}
-
 private handleData(readingData, usageData) {
     //log.trace "handleData ($power, $energy)"
-    //clearHistory()
-
+    clearHistory()
     try {
         def currentDay = new Date().format("dd",location?.timeZone)
         if(state?.currentDay == null) { state?.currentDay = currentDay }
@@ -278,16 +202,16 @@ private handleData(readingData, usageData) {
             //runIn(23, "getTodaysData", [overwrite: false])
 
             state?.powerTable = []
-            //state?.energyTable = []
+            state?.energyTable = []
             //addNewData(currentPower, currentEnergy)
         }
 
         def powerTable = state?.powerTable
-        //def energyTable = state?.energyTable
+        def energyTable = state?.energyTable
 
         if (state?.powerTableYesterday?.size() == 0) {
             state.powerTableYesterday = powerTable
-            //state.energyTableYesterday = energyTable
+            state.energyTableYesterday = energyTable
         }
 
         if (!state?.currentDay || state.currentDay != currentDay) {
@@ -296,13 +220,13 @@ private handleData(readingData, usageData) {
             state?.maxPowerReading = currentPower
             state.currentDay = currentDay
             state.powerTableYesterday = powerTable
-            //state.energyTableYesterday = energyTable
+            state.energyTableYesterday = energyTable
             state.powerTable = []
-            //state.energyTable = []
+            state.energyTable = []
             state.lastPower = 0
         }
-        log.debug "powerTable-(localVariable)(This is after being filled by state?.powerTable): $powerTable"
-        log.debug "state?.powerTable (before adding new values): ${state?.powerTable}"
+        //log.debug "powerTable-(localVariable)(This is after being filled by state?.powerTable): $powerTable"
+        //log.debug "state?.powerTable (before adding new values): ${state?.powerTable}"
         if (currentPower > 0 || powerTable?.size() != 0) {
             def newDate = new Date()
             def eVal = null
@@ -310,11 +234,13 @@ private handleData(readingData, usageData) {
                 state?.lastEnergyReading = currentEnergy
                 eVal = currentEnergy
             }
-            powerTable.add([newDate?.format("YYYY-MM-DD HH:MM:SS", location?.timeZone),currentPower, eVal])
-            //energyTable.add([newDate?.format("H", location?.timeZone),newDate?.format("m", location?.timeZone),energyToday])
+            powerTable.add([newDate?.format("yyyy-MM-dd hh:mm:ss", location?.timeZone),currentPower])
+            energyTable.add([newDate?.format("yyyy-MM-dd hh:mm:ss", location?.timeZone), eVal])
 
             state.powerTable = powerTable
-            log.debug "state?.powerTable(after adding in new values and writing back to state: ${state?.powerTable}"
+            state.energyTable = energyTable
+            log.debug "$powerTable"
+            //log.debug "state?.powerTable(after adding in new values and writing back to state: ${state?.powerTable}"
         }
     } catch (ex) {
         log.error "handleData Exception:", ex
@@ -402,7 +328,7 @@ def lastUpdatedEvent() {
     def now = new Date()
     def formatVal = "MMM d, yyyy - h:mm:ss a"
     def tf = new SimpleDateFormat(formatVal)
-    tf.setTimeZone(state.timeZone)
+    tf.setTimeZone(location.timeZone)
     def lastDt = "${tf?.format(now)}"
     def lastUpd = device.currentState("lastUpdatedDt")?.value
     state?.lastUpdatedDt = lastDt?.toString()
