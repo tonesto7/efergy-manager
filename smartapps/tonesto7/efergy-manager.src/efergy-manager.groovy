@@ -20,6 +20,7 @@
 
 import groovy.time.*
 import java.text.SimpleDateFormat
+import org.joda.time.DateTime;
 
 definition(
     name: "${textAppName()}",
@@ -481,6 +482,7 @@ def refresh() {
     }
     updateWebStuff()
     //notificationCheck() //Checks if a notification needs to be sent for a specific event
+    //getMonthStartEpoch()
 }
 
 //Create Refresh schedule to refresh device data (Triggers roughly every 30 seconds)
@@ -1065,6 +1067,12 @@ def GetTimeDiffSeconds(lastDate, sender=null) {
         log.error "GetTimeDiffSeconds Exception: (${sender ? "$sender | " : ""}lastDate: $lastDate):", ex
         return 10000
     }
+}
+
+def getMonthStartEpoch() {
+
+
+    log.debug "$beginningOfLastMonth | $endOfLastMonth"
 }
 
 def notifValEnum(allowCust = true) {

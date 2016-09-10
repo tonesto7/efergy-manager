@@ -165,6 +165,7 @@ def clearHistory() {
 private handleData(readingData, usageData) {
     //log.trace "handleData ($power, $energy)"
     //clearHistory()
+    //state?.lastRecordDt = null
     try {
         def currentDay = new Date().format("dd", location.timeZone)
         def currentMonth = new Date().format("MM", location.timeZone)
@@ -237,15 +238,21 @@ private handleData(readingData, usageData) {
 
         if (currentPower > 0 || usageTable?.size() != 0) {
             def newDate = new Date()
-            usageTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), newDate.format("ss", location.timeZone), currentEnergy, currentPower])
-            state.usageTable = usageTable
-            //log.debug "$usageTable"
+            if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null) {
+                usageTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), newDate.format("ss", location.timeZone), currentEnergy, currentPower])
+                //usageTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), currentEnergy, currentPower])
+                state.usageTable = usageTable
+                state.lastRecordDt = getDtNow()
+                //log.debug "$usageTable"
+            }
         }
 
     } catch (ex) {
         log.error "handleData Exception:", ex
     }
 }
+
+def getLastRecUpdSec() { return !state?.lastRecordDt ? 100000 : GetTimeDiffSeconds(state?.lastRecordDt, "getLastRecUpdSec").toInteger() }
 
 private handleNewDay(curPow, curEner) {
     def dayMinPowerTable = state?.dayMinPowerTable
@@ -475,9 +482,39 @@ def isCodeUpdateAvailable(newVer, curVer) {
 
 def getTimeZone() {
     def tz = null
-    if (location?.timeZone) { tz = location.timeZone }
-    if(!tz) { log.warn "getTimeZone: TimeZone is not found ..." }
+    if (location?.timeZone) { tz = location?.timeZone }
+    if(!tz) { log.warn("getTimeZone: SmartThings TimeZone is not found on your account...") }
     return tz
+}
+
+def formatDt(dt) {
+    def tf = new SimpleDateFormat("E MMM dd HH:mm:ss z yyyy")
+    if(location.timeZone) { tf.setTimeZone(location.timeZone) }
+    else { log.warn "SmartThings TimeZone is not found or is not set... Please Try to open your ST location and Press Save..." }
+    return tf?.format(dt)
+}
+
+//Returns time differences is seconds
+def GetTimeDiffSeconds(lastDate, sender=null) {
+    //log.trace "GetTimeDiffSeconds($lastDate, $sendera)"
+    try {
+        if(lastDate?.contains("dtNow")) { return 10000 }
+        def now = new Date()
+        def lastDt = Date.parse("E MMM dd HH:mm:ss z yyyy", lastDate)
+        def start = Date.parse("E MMM dd HH:mm:ss z yyyy", formatDt(lastDt)).getTime()
+        def stop = Date.parse("E MMM dd HH:mm:ss z yyyy", formatDt(now)).getTime()
+        def diff = (int) (long) (stop - start) / 1000
+        return diff
+    }
+    catch (ex) {
+        log.error "GetTimeDiffSeconds Exception: (${sender ? "$sender | " : ""}lastDate: $lastDate):", ex
+        return 10000
+    }
+}
+
+def getDtNow() {
+	def now = new Date()
+	return formatDt(now)
 }
 
 //Log Writer that all logs are channel through *It will only output these if Debug Logging is enabled under preferences
@@ -745,9 +782,9 @@ def getGraphHTML() {
 def showChartHtml() {
     def data = """
     <script type="text/javascript">
-        google.charts.load('current', {packages: ['corechart']});
-        google.charts.setOnLoadCallback(drawGraph);
-        function drawGraph() {
+      google.charts.load('current', {packages: ['corechart']});
+      google.charts.setOnLoadCallback(drawGraph);
+      function drawGraph() {
       var data = new google.visualization.DataTable();
       data.addColumn('timeofday', 'time');
       data.addColumn('number', 'Energy (kWh)(Y)');
@@ -765,8 +802,9 @@ def showChartHtml() {
         width: '100%',
         height: '100%',
         animation: {
-          duration: 1500,
-          startup: true
+          duration: 4500,
+          startup: true,
+          easing: 'inAndOut'
         },
         hAxis: {
           format: 'H:mm',
@@ -783,7 +821,7 @@ def showChartHtml() {
         vAxes: {
           0: {
             title: 'Power Used (W)',
-            minValue: [${getMinVal(4)}],
+			minValue: [${getMinVal(4)}],
             maxValue: [${getMaxVal(4)}+10],
             format: 'decimal',
             textStyle: {color: '#F8971D'},
@@ -791,9 +829,9 @@ def showChartHtml() {
           },
           1: {
             title: 'Energy Consumed (kWh)',
-            format: 'decimal',
             minValue: [${getMinVal(3)}],
             maxValue: [${getMaxVal(3)}+10],
+            format: 'decimal',
             textStyle: {color: '#8CC63F'},
             titleTextStyle: {color: '#8CC63F'}
           }
