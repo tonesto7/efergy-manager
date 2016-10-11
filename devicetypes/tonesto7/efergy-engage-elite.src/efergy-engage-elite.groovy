@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.0.1"}
-def versionDate() {"9-8-2016"}
+def devTypeVer() {"3.0.2"}
+def versionDate() {"10-11-2016"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -149,6 +149,10 @@ def generateEvent(Map eventData) {
             lastCheckinEvent(eventData?.hubData?.hubTsHuman)
         }
         lastUpdatedEvent()
+        //log.debug "1: ${getDataString(1,3)}"
+        //log.debug "2: ${getDataString(2,4)}"
+        //log.debug "3: ${getDataString(3,3)}"
+        //log.debug "4: ${getDataString(4,4)}"
         return null
     }
     catch (ex) {
@@ -252,7 +256,7 @@ private handleData(readingData, usageData) {
     }
 }
 
-def getLastRecUpdSec() { return !state?.lastRecordDt ? 100000 : GetTimeDiffSeconds(state?.lastRecordDt, "getLastRecUpdSec").toInteger() }
+def getLastRecUpdSec() { return !state?.lastRecordDt ? 100000 : GetTimeDiffSeconds(state?.lastRecordDt, "getLastRecUpdSec")?.toInteger() }
 
 private handleNewDay(curPow, curEner) {
     def dayMinPowerTable = state?.dayMinPowerTable
@@ -318,7 +322,7 @@ def getAverage(items) {
 		tmpAvg = items
 		if(tmpAvg && tmpAvg?.size() > 1) { tmpVal = (tmpAvg?.sum() / tmpAvg?.size()) }
 	}
-	return tmpVal.toInteger()
+	return tmpVal
 }
 
 def updateAttributes(rData, uData, tData, hData) {
@@ -560,12 +564,18 @@ String getDataString(Integer seriesIndex, Integer itemIndex) {
             dataTable = state.usageTableYesterday
             break
         case 2:
+            dataTable = state.usageTableYesterday
+            break
+        case 3:
+            dataTable = state.usageTable
+            break
+        case 4:
             dataTable = state.usageTable
             break
     }
     dataTable?.each() {
-        def dataArray = [[it[0],it[1],it[2]],null,null,null,null]
-        dataArray[itemIndex] = it[itemIndex]
+        def dataArray = [[it[0],it[1]],null,null,null,null]
+        dataArray[seriesIndex] = it[itemIndex]
         dataString += dataArray.toString() + ","
     }
     return dataString
@@ -793,16 +803,16 @@ def showChartHtml() {
       data.addColumn('number', 'Power (W)');
       data.addRows([
         ${getDataString(1,3)}
-        ${getDataString(1,4)}
-        ${getDataString(2,3)}
         ${getDataString(2,4)}
+        ${getDataString(3,3)}
+        ${getDataString(4,4)}
       ]);
       var options = {
         fontName: 'San Francisco, Roboto, Arial',
         width: '100%',
         height: '100%',
         animation: {
-          duration: 4500,
+          duration: 2500,
           startup: true,
           easing: 'inAndOut'
         },
@@ -821,16 +831,12 @@ def showChartHtml() {
         vAxes: {
           0: {
             title: 'Power Used (W)',
-			minValue: [${getMinVal(4)}],
-            maxValue: [${getMaxVal(4)}+10],
             format: 'decimal',
             textStyle: {color: '#F8971D'},
             titleTextStyle: {color: '#F8971D'}
           },
           1: {
             title: 'Energy Consumed (kWh)',
-            minValue: [${getMinVal(3)}],
-            maxValue: [${getMaxVal(3)}+10],
             format: 'decimal',
             textStyle: {color: '#8CC63F'},
             titleTextStyle: {color: '#8CC63F'}
