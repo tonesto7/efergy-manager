@@ -38,12 +38,19 @@ definition(
 	Add offline Hub handling to verify that the hub is online instead of generating errors.
 */
 
-def appVersion() { "3.0.2" }
-def appVerDate() { "10-11-2016" }
+def appVersion() { "3.1.0" }
+def appVerDate() { "11-1-2016" }
 def appVerInfo() {
 	def str = ""
 
-    str += "V3.0.2 (October 11th, 2016):"
+	str += "V3.1.0 (November 1st, 2016):"
+	str += "\n▔▔▔▔▔▔▔▔▔▔▔"
+	str += "\n • Fixed: Rebuilt graph data structure so prevent the confusing overlaying colors"
+    str += "\n • Fixed: Graph resetting day based on UTC time"
+	str += "\n • Added: Power Tiles for Min, Avg, Max"
+	str += "\n • Added: Started works on collecting more data for day, week, month, year (This will be visualized soon)"
+
+    str += "\n\nV3.0.2 (October 11th, 2016):"
 	str += "\n▔▔▔▔▔▔▔▔▔▔▔"
 	str += "\n • Fixed issue #4 where manager kept opening to login screen"
     str += "\n • Fixed graph overlay issue #3 and hopefully fixed #1 with the graph not displaying"
@@ -975,7 +982,10 @@ private getHubData() {
 			data["hubId"] = hubData?.hid?.toString() ?: null
 			data["hubMacAddr"] = hubData?.listOfMacs?.mac[0]?.toString() ?: null
 			data["hubStatus"] = hubData?.listOfMacs?.status[0]?.toString() ?: null
-			data["hubTsHuman"] = parseDt("E MMM dd HH:mm:ss yyyy", hubData?.listOfMacs?.tsHuman[0]?.toString()) ?: null
+			data["hubTs"] = hubData?.listOfMacs?.ts[0]?.toLong() ?: null
+			data["hubTsDelta"] = hubData?.listOfMacs?.tsDelta[0] ?: null
+			data["hubTsHuman"] = parseDt("E MMM dd HH:mm:ss yyyy", hubData?.listOfMacs?.tsHuman[0]?.toString(), false) ?: null
+			data["hubTsLocal"] = parseDt("E MMM dd HH:mm:ss yyyy", hubData?.listOfMacs?.tsHuman[0]?.toString()) ?: null
 			data["hubType"] = hubData?.listOfMacs?.type[0]?.toString() ?: null
 			data["hubVersion"] = hubData?.listOfMacs?.version[0]?.toString() ?: null
 			data["hubName"] = getHubName(hubData?.listOfMacs?.type[0].toString()) ?: null
@@ -1008,24 +1018,25 @@ def getEfergyData(url, pathStr) {
 }
 
 def getTimeZone() {
-	def tz = null
-	if (location?.timeZone) { tz = location?.timeZone }
-	if(!tz) { log.warn("getTimeZone: SmartThings TimeZone is not found on your account...") }
-	return tz
+	if (location.timeZone != null) {
+		return location.timeZone
+	} else { log.warn("getTimeZone: SmartThings TimeZone is not found on your account...") }
+	return null
 }
 
-def formatDt(dt) {
+def formatDt(dt, tzChg=true) {
 	def tf = new SimpleDateFormat("E MMM dd HH:mm:ss z yyyy")
-	if(getTimeZone()) { tf.setTimeZone(getTimeZone()) }
-	else { log.warn "SmartThings TimeZone is not found or is not set... Please Try to open your ST location and Press Save..." }
+	if(tzChg) {
+		if(getTimeZone()) { tf.setTimeZone(getTimeZone()) }
+	}
 	return tf?.format(dt)
 }
 
-def parseDt(format, dt) {
+def parseDt(pFormat, dt, tzFmt=true) {
 	def result
-	def newDt = Date.parse("$format", dt)
-	result = formatDt(newDt)
-	//log.debug "result: $result"
+	def newDt = Date.parse("$pFormat", dt)
+	result = formatDt(newDt, tzFmt)
+	//log.debug "parseDt Result: $result"
 	return result
 }
 
@@ -1076,9 +1087,7 @@ def GetTimeDiffSeconds(lastDate, sender=null) {
 }
 
 def getMonthStartEpoch() {
-
-
-	log.debug "$beginningOfLastMonth | $endOfLastMonth"
+	//log.debug "$beginningOfLastMonth | $endOfLastMonth"
 }
 
 def notifValEnum(allowCust = true) {

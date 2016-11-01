@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.0.2"}
-def versionDate() {"10-11-2016"}
+def devTypeVer() {"3.1.0"}
+def versionDate() {"11-1-2016"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -33,6 +33,7 @@ metadata {
         attribute "minPowerReading", "string"
         attribute "maxEnergyReading", "string"
         attribute "minEnergyReading", "string"
+        attribute "dayPowerAvg", "string"
         attribute "readingUpdated", "string"
         attribute "apiStatus", "string"
         attribute "devTypeVer", "string"
@@ -85,10 +86,18 @@ metadata {
             state "default", label: 'Hub Status:\n${currentValue}'
         }
 
+        valueTile("pwrMin", "device.minPowerReading", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+            state "default", label: 'Power (Min):\n${currentValue}W'
+        }
+        valueTile("pwrAvg", "device.dayPowerAvg", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+            state "default", label: 'Power (Avg):\n${currentValue}W'
+        }
+        valueTile("pwrMax", "device.maxPowerReading", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+            state "default", label: 'Power (Max):\n${currentValue}W'
+        }
         valueTile("hubVersion", "device.hubVersion", width: 2, height: 1, decoration: "flat", wordWrap: true) {
             state "default", label: 'Hub Version:\n${currentValue}'
         }
-
         valueTile("readingUpdated_str", "device.readingUpdated_str", width: 3, height: 1, decoration: "flat", wordWrap: true) {
             state "default", label:'${currentValue}'
         }
@@ -104,7 +113,7 @@ metadata {
         htmlTile(name:"graphHTML2", action: "getGraphHTML2", width: 6, height: 8, whitelist: ["www.gstatic.com", "raw.githubusercontent.com", "cdn.rawgit.com"])
 
         main (["powerMulti"])
-        details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate_str", "readingUpdated_str", "graphHTML", "refresh"])
+        details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate_str", "readingUpdated_str", "pwrMin", "pwrAvg", "pwrMax", "graphHTML", "refresh"])
     }
 }
 
@@ -133,7 +142,7 @@ def poll() {
     parent.refresh()
 }
 
-def generateEvent(Map eventData) {
+void generateEvent(Map eventData) {
     //log.trace("generateEvent Parsing data ${eventData}")
     try {
         if(eventData) {
@@ -149,37 +158,44 @@ def generateEvent(Map eventData) {
             lastCheckinEvent(eventData?.hubData?.hubTsHuman)
         }
         lastUpdatedEvent()
-        //log.debug "1: ${getDataString(1,3)}"
-        //log.debug "2: ${getDataString(2,4)}"
-        //log.debug "3: ${getDataString(3,3)}"
-        //log.debug "4: ${getDataString(4,4)}"
-        return null
+        //return null
     }
     catch (ex) {
-        log.error "generateEvent Exception: ${ex}", ex
+        log.error "generateEvent Exception:", ex
     }
 }
 
 def clearHistory() {
     log.trace "Clearing History..."
-    state?.usageTable = null
-    state?.usageTableYesterday = null
+    state?.powerTable = null
+    state?.powerTableYesterday = null
+    state?.energyTable = null
+    state?.energyTableYesterday = null
+    state.lastRecordDt = null
 }
 
 private handleData(readingData, usageData) {
-    //log.trace "handleData ($power, $energy)"
+    //log.trace "handleData ($localTime, $power, $energy)"
     //clearHistory()
     //state?.lastRecordDt = null
     try {
-        def currentDay = new Date().format("dd", location.timeZone)
-        def currentMonth = new Date().format("MM", location.timeZone)
+        def today = new Date()
+        def currentHour = today.format("HH", location.timeZone) as Integer
+        def currentDay = today.format("dd", location.timeZone) //1...31
+        def currentDayNum = today.format("u", location.timeZone) as Integer // 1 = Monday,... 7 = Sunday
+        def currentMonth = today.format("MM", location.timeZone)
+        def currentYear = today.format("YYYY", location.timeZone) as Integer
         if(state?.currentDay == null) { state?.currentDay = currentDay }
+        if(state?.currentDayNum == null) { state?.currentDayNum = currentDayNum }
+        if(state?.currentYear == null) { state?.currentYear = currentYear }
         if(state?.currentMonth == null) { state?.currentMonth = currentMonth }
         def currentEnergy = usageData?.todayUsage
         def currentPower = readingData?.powerReading
 
         logWriter("currentDay: $currentDay | (state): ${state?.currentDay}")
+        logWriter("currentDayNum: $currentDayNum | (state): ${state?.currentDayNum}")
         logWriter("currentMonth: $currentMonth | (state): ${state?.currentMonth}")
+        logWriter("currentYear: $currentYear | (state): ${state?.currentYear}")
 
         logWriter("currentPower: $currentPower")
         logWriter("currentEnergy: $currentEnergy")
@@ -212,45 +228,61 @@ private handleData(readingData, usageData) {
             logWriter("minEnergyReading: ${state?.minEnergyReading} kWh")
         }
 
-        if(state?.usageTable == null) {
-            state?.usageTable = []
+        if(!state?.powerTable || !state?.energyTable) {
+            state?.powerTable = []
+            state?.energyTable = []
             state?.dayMinPowerTable = []
             state?.dayMaxPowerTable = []
             state?.dayMinEnergyTable = []
             state?.dayMaxEnergyTable = []
             state?.dailyPowerAvgTable = []
         }
-
-        def usageTable = state?.usageTable
-
-        if (state?.usageTableYesterday?.size() == 0) {
-            state.usageTableYesterday = usageTable
+        if(!state?.powerTableYesterday || !state?.energyTableYesterday) {
+            state.powerTableYesterday = []
+            state.energyTableYesterday = []
         }
 
-        if (!state?.currentDay || state.currentDay != currentDay) {
+        def powerTable = state.powerTable
+        def energyTable = state.energyTable
+
+        if (!state?.currentDay || (state.currentDay != currentDay && currentHour == 0)) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
-            state.usageTableYesterday = usageTable
+            state.powerTableYesterday = powerTable
+            state.energyTableYesterday = energyTable
+
             handleNewDay(currentPower, currentEnergy)
+            powerTable = powerTable ? [] : null
+            energyTable = energyTable ? [] : null
             state.currentDay = currentDay
+            state.currentDayNum = currentDayNum
+            if(currentDay == 1) {
+                log.debug "new week"
+                handleNewWeek()
+            }
         }
-        if (!state?.currentMonth || state.currentMonth != currentMonth) {
+        if (!state?.currentMonth || (state.currentMonth != currentMonth && currentHour == 0)) {
             log.debug "currentMonth ($currentMonth) is != to State (${state?.currentMonth})"
 
             handleNewMonth()
             state.currentMonth = currentMonth
         }
 
-        if (currentPower > 0 || usageTable?.size() != 0) {
+        if (currentPower > 0 || powerTable?.size() != 0) {
             def newDate = new Date()
-            if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null) {
-                usageTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), newDate.format("ss", location.timeZone), currentEnergy, currentPower])
-                //usageTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), currentEnergy, currentPower])
-                state.usageTable = usageTable
+            if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null ) {
+                powerTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentPower])
+                energyTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentEnergy])
+                state.powerTable = powerTable
+            	state.energyTable = energyTable
                 state.lastRecordDt = getDtNow()
-                //log.debug "$usageTable"
+                //log.debug "powerTable: $powerTable"
+                //log.debug "energyTable: $energyTable"
+                def dPwrAvg = getDayPowerAvg()
+                if(dPwrAvg != null) {
+                    sendEvent(name: "dayPowerAvg", value: dPwrAvg, unit: "W", description: "Average Power Reading today was $dPwrAvg W", display: false, displayed: false)
+                }
             }
         }
-
     } catch (ex) {
         log.error "handleData Exception:", ex
     }
@@ -280,31 +312,90 @@ private handleNewDay(curPow, curEner) {
     state?.dayMaxEnergyTable = dayMaxEnergyTable
 
     def dailyPowerAvgTable = state?.dailyPowerAvgTable
-    if(getDayPowerAvg() != null) {
-        dailyPowerAvgTable.add(getDayPowerAvg())
+    def dPwrAvg = getDayPowerAvg()
+    if(dPwrAvg != null) {
+        dailyPowerAvgTable.add(dPwrAvg)
     }
     state?.dailyPowerAvgTable = dailyPowerAvgTable
 
-    state.usageTable = []
     state.lastPower = 0
 }
 
-def handleNewMonth() {
+def handleNewWeek() {
+    def wkMinPowerTable = state?.wkMinPowerTable
+    def wkMaxPowerTable = state?.wkMaxPowerTable
+    def wkMinEnergyTable = state?.wkMinEnergyTable
+    def wkMaxEnergyTable = state?.wkMaxEnergyTable
+    def wkPowerAvgTable = state?.wkPowerAvgTable
 
+    wkMinPowerTable.add(state?.dayMinPowerTable)
+    wkMaxPowerTable.add(state?.dayMaxPowerTable)
+    wkMinEnergyTable.add(state?.dayMinEnergyTable)
+    wkMaxEnergyTable.add(state?.dayMaxEnergyTable)
+    wlPowerAvgTable.add(state?.dayPowerAvgTable)
+
+    state?.wkMinPowerTable = wkMinPowerTable
+    state?.wkMaxPowerTable = wkMaxPowerTable
+    state?.wkMinEnergyTable = wkMinEnergyTable
+    state?.wkMaxEnergyTable = wkMaxEnergyTable
+    state?.wkPowerAvgTable = wkPowerAvgTable
+
+    state?.dayMinPowerTable = []
+    state?.dayMaxPowerTable = []
+    state?.dayMinEnergyTable = []
+    state?.dayMaxEnergyTable = []
+    state?.dayPowerAvgTable = []
+}
+
+def handleNewMonth() {
+    def monMinPowerTable = state?.monMinPowerTable
+    def monMaxPowerTable = state?.monMaxPowerTable
+    def monMinEnergyTable = state?.monMinEnergyTable
+    def monMaxEnergyTable = state?.monMaxEnergyTable
+    def monPowerAvgTable = state?.monPowerAvgTable
+
+    monMinPowerTable.add(state?.wkMinPowerTable)
+    monMaxPowerTable.add(state?.wkMaxPowerTable)
+    monMinEnergyTable.add(state?.wkMinEnergyTable)
+    monMaxEnergyTable.add(state?.wkMaxEnergyTable)
+    monPowerAvgTable.add(state?.wkPowerAvgTable)
+
+    state?.monMinPowerTable = monMinPowerTable
+    state?.monMaxPowerTable = monMaxPowerTable
+    state?.monMinEnergyTable = monMinEnergyTable
+    state?.monMaxEnergyTable = monMaxEnergyTable
+    state?.monPowerAvgTable = monPowerAvgTable
+
+    state?.wkMinPowerTable = []
+    state?.wkMaxPowerTable = []
+    state?.wkMinEnergyTable = []
+    state?.wkMaxEnergyTable = []
+    state?.wkPowerAvgTable = []
+}
+
+def getDayElapSec() {
+	Calendar c = Calendar.getInstance();
+	long now = c.getTimeInMillis();
+	c.set(Calendar.HOUR_OF_DAY, 0);
+	c.set(Calendar.MINUTE, 0);
+	c.set(Calendar.SECOND, 0);
+	c.set(Calendar.MILLISECOND, 0);
+	long passed = now - c.getTimeInMillis();
+	return (long) passed / 1000;
 }
 
 def getDayPowerAvg() {
     try {
         def result = null
-        if(state?.usageTable?.size() >= 2) {
+        if(state?.powerTable?.size() >= 2) {
             def avgTmp = []
-            state?.usageTable?.each() {
-                if(it[4] != null) {
-                    avgTmp?.add(it[4])
+            state?.powerTable?.each() {
+                if(it[2] != null) {
+                    avgTmp?.add(it[2])
                 }
             }
             if(avgTmp?.size() >= 2) {
-                result = getAverage(avgTmp)
+                result = getListAvg(avgTmp).toInteger()
             }
         }
         return result
@@ -323,6 +414,19 @@ def getAverage(items) {
 		if(tmpAvg && tmpAvg?.size() > 1) { tmpVal = (tmpAvg?.sum() / tmpAvg?.size()) }
 	}
 	return tmpVal
+}
+
+def getListAvg(itemList, rnd=0) {
+	//log.debug "itemList: ${itemList}"
+	def avgRes = 0.0
+	def iCnt = itemList?.size()
+	if(iCnt >= 1) {
+		if(iCnt > 1) {
+			avgRes = (itemList?.sum().toDouble() / iCnt.toDouble()).toDouble()
+		} else { itemList?.each { avgRes = avgRes + it.toDouble() } }
+	}
+	//log.debug "[getIntListAvg] avgRes: $avgRes"
+	return avgRes.round(rnd)
 }
 
 def updateAttributes(rData, uData, tData, hData) {
@@ -556,60 +660,32 @@ def Logger(msg, type="debug") {
 /*************************************************************
 |                  HTML TILE RENDER FUNCTIONS                |
 **************************************************************/
-String getDataString(Integer seriesIndex, Integer itemIndex) {
-    def dataString = ""
-    def dataTable = []
-    switch (seriesIndex) {
-        case 1:
-            dataTable = state.usageTableYesterday
-            break
-        case 2:
-            dataTable = state.usageTableYesterday
-            break
-        case 3:
-            dataTable = state.usageTable
-            break
-        case 4:
-            dataTable = state.usageTable
-            break
-    }
-    dataTable?.each() {
-        def dataArray = [[it[0],it[1]],null,null,null,null]
-        dataArray[seriesIndex] = it[itemIndex]
-        dataString += dataArray.toString() + ","
-    }
-    return dataString
+String getDataString(Integer seriesIndex) {
+	def dataString = ""
+	def dataTable = []
+	switch (seriesIndex) {
+		case 1:
+			dataTable = state.energyTableYesterday
+			break
+		case 2:
+			dataTable = state.powerTableYesterday
+			break
+		case 3:
+			dataTable = state.energyTable
+			break
+		case 4:
+			dataTable = state.powerTable
+			break
+	}
+	dataTable.each() {
+		def dataArray = [[it[0],it[1],0],null,null,null,null]
+		dataArray[seriesIndex] = it[2]
+		dataString += dataArray.toString() + ","
+	}
+	return dataString
 }
 
-def getImgBase64(url,type) {
-    try {
-        def params = [
-            uri: url,
-            contentType: 'image/$type'
-        ]
-        httpGet(params) { resp ->
-            if(resp.data) {
-                def respData = resp?.data
-                ByteArrayOutputStream bos = new ByteArrayOutputStream()
-                int len
-                int size = 3072
-                byte[] buf = new byte[size]
-                while ((len = respData.read(buf, 0, size)) != -1)
-                    bos.write(buf, 0, len)
-                buf = bos.toByteArray()
-                //log.debug "buf: $buf"
-                String s = buf?.encodeBase64()
-                //log.debug "resp: ${s}"
-                return s ? "data:image/${type};base64,${s.toString()}" : null
-            }
-        }
-    }
-    catch (ex) {
-        log.error "getImageBytes Exception:", ex
-    }
-}
-
-def getFileBase64(url,preType,fileType) {
+def getFileB64(url,preType,fileType) {
     try {
         def params = [
             uri: url,
@@ -633,7 +709,7 @@ def getFileBase64(url,preType,fileType) {
         }
     }
     catch (ex) {
-        log.error "getFileBase64 Exception:", ex
+        log.error "getFileB64 Exception:", ex
     }
 }
 
@@ -653,24 +729,28 @@ def getCSS(url = null){
 }
 
 def getJS(url){
-    def params = [
-        uri: url?.toString(),
-        contentType: "text/plain"
-    ]
-    httpGet(params)  { resp ->
-        return resp?.data.text
+    try {
+        def params = [
+            uri: url?.toString(),
+            contentType: "text/plain"
+        ]
+        httpGet(params)  { resp ->
+            return resp?.data.text
+        }
+    } catch (ex) {
+        log.error "getJS Exception: ", ex
     }
 }
 
 def getCssData() {
     def cssData = null
-    cssData = getFileBase64(cssUrl(), "text", "css")
+    cssData = getFileB64(cssUrl(), "text", "css")
     return cssData
 }
 
 def getChartJsData() {
     def chartJsData = null
-    chartJsData = getFileBase64(chartJsUrl(), "text", "javascript")
+    chartJsData = getFileB64(chartJsUrl(), "text", "javascript")
     return chartJsData
 }
 
@@ -681,11 +761,11 @@ def chartJsUrl() { return "https://www.gstatic.com/charts/loader.js" }
 def getImg(imgName) { return imgName ? "https://cdn.rawgit.com/tonesto7/efergy-manager/master/Images/Devices/$imgName" : "" }
 
 def getStartTime() {
-    def startTime = 24
-    if (state?.usageTable?.size()) { startTime = state?.usageTable?.min{it[0].toInteger()}[0].toInteger() }
-    if (state?.usageTableYesterday?.size()) { startTime = Math.min(startTime, state?.usageTableYesterday?.min{it[0].toInteger()}[0].toInteger()) }
-    //log.trace "startTime ${startTime}"
-    return startTime
+	def startTime = 24
+	if (state?.powerTable.size()) { startTime = state?.powerTable?.min{it[0].toInteger()}[0].toInteger() }
+	if (state?.powerTableYesterday.size()) { startTime = Math.min(startTime, state?.powerTableYesterday?.min{it[0].toInteger()}[0].toInteger())	}
+	return startTime
+    LogAction("startTime ${startTime}", "trace")
 }
 
 def getMinVal(Integer item) {
@@ -707,7 +787,7 @@ def getMaxVal(Integer item) {
 def getGraphHTML() {
     try {
         def updateAvail = !state?.updateAvailable ? "" : """<h3 style="background: #ffa500;">Device Update Available!</h3>"""
-        def chartHtml = (state?.usageTable?.size() > 0) ? showChartHtml() : hideChartHtml()
+        def chartHtml = (state?.powerTable.size() > 0 && state?.energyTable?.size() > 0) ? showChartHtml() : hideChartHtml()
         def html = """
         <!DOCTYPE html>
         <html>
@@ -741,45 +821,35 @@ def getGraphHTML() {
                   </tr>
                 </tbody>
               </table>
-
-              <p class="centerText">
-                <a href="#openModal" class="button">More info</a>
-              </p>
-
-              <div id="openModal" class="topModal">
-                <div>
-                  <a href="#close" title="Close" class="close">X</a>
-                  <table>
-                    <tr>
-                      <th>Hub Name</th>
-                    </tr>
-                    <td>${state?.hubName}</td>
-                    </tbody>
-                  </table>
-                  <table>
-                    <tr>
-                      <th>Hub Version</th>
-                      <th>Debug</th>
-                      <th>Device Type</th>
-                    </tr>
-                    <td>${state?.hubVersion.toString()}</td>
-                    <td>${state?.debugStatus}</td>
-                    <td>${state?.devTypeVer.toString()}</td>
-                    </tbody>
-                  </table>
-                  <table>
-                    <thead>
-                      <th>Hub Checked-In</th>
-                      <th>Data Last Received</th>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td class="dateTimeText">${state?.lastConnection.toString()}</td>
-                        <td class="dateTimeText">${state?.lastUpdatedDt.toString()}</td>
-                      </tr>
-                  </table>
-                </div>
-              </div>
+              <table>
+                <tr>
+                  <th>Hub Name</th>
+                </tr>
+                <td>${state?.hubName}</td>
+                </tbody>
+              </table>
+              <table>
+                <tr>
+                  <th>Hub Version</th>
+                  <th>Debug</th>
+                  <th>Device Type</th>
+                </tr>
+                <td>${state?.hubVersion.toString()}</td>
+                <td>${state?.debugStatus}</td>
+                <td>${state?.devTypeVer.toString()}</td>
+                </tbody>
+              </table>
+              <table>
+                <thead>
+                  <th>Hub Checked-In</th>
+                  <th>Data Last Received</th>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="dateTimeText">${state?.lastConnection.toString()}</td>
+                    <td class="dateTimeText">${state?.lastUpdatedDt.toString()}</td>
+                  </tr>
+              </table>
             </body>
         </html>
         """
@@ -790,89 +860,97 @@ def getGraphHTML() {
 }
 
 def showChartHtml() {
-    def data = """
-    <script type="text/javascript">
-      google.charts.load('current', {packages: ['corechart']});
-      google.charts.setOnLoadCallback(drawGraph);
-      function drawGraph() {
-      var data = new google.visualization.DataTable();
-      data.addColumn('timeofday', 'time');
-      data.addColumn('number', 'Energy (kWh)(Y)');
-      data.addColumn('number', 'Power (W)(Y)');
-      data.addColumn('number', 'Energy (kWh)');
-      data.addColumn('number', 'Power (W)');
-      data.addRows([
-        ${getDataString(1,3)}
-        ${getDataString(2,4)}
-        ${getDataString(3,3)}
-        ${getDataString(4,4)}
-      ]);
-      var options = {
-        fontName: 'San Francisco, Roboto, Arial',
-        width: '100%',
-        height: '100%',
-        animation: {
-          duration: 2500,
-          startup: true,
-          easing: 'inAndOut'
-        },
-        hAxis: {
-          format: 'H:mm',
-          minValue: [${getStartTime()},0,0],
-          slantedText: true,
-          slantedTextAngle: 30
-        },
-        series: {
-          0: {targetAxisIndex: 1, color: '#cbe5a9', lineWidth: 1, visibleInLegend: false},
-          1: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
-          2: {targetAxisIndex: 1, color: '#8CC63F'},
-          3: {targetAxisIndex: 0, color: '#F8971D'}
-        },
-        vAxes: {
-          0: {
-            title: 'Power Used (W)',
-            format: 'decimal',
-            textStyle: {color: '#F8971D'},
-            titleTextStyle: {color: '#F8971D'}
-          },
-          1: {
-            title: 'Energy Consumed (kWh)',
-            format: 'decimal',
-            textStyle: {color: '#8CC63F'},
-            titleTextStyle: {color: '#8CC63F'}
-          }
-        },
-        legend: {
-          position: 'none',
-          maxLines: 4
-        },
-        chartArea: {
-          left: '12%',
-          right: '15%',
-          top: '5%',
-          bottom: '15%',
-          height: '100%',
-          width: '100%'
+    try {
+        def data = """
+        <script type="text/javascript">
+          google.charts.load('current', {packages: ['corechart']});
+          google.charts.setOnLoadCallback(drawGraph);
+          function drawGraph() {
+          var data = new google.visualization.DataTable();
+          data.addColumn('timeofday', 'time');
+          data.addColumn('number', 'Energy (Yesterday)');
+          data.addColumn('number', 'Power (Yesterday)');
+          data.addColumn('number', 'Energy (Today)');
+          data.addColumn('number', 'Power (Today)');
+          data.addRows([
+            ${getDataString(1)}
+            ${getDataString(2)}
+            ${getDataString(3)}
+            ${getDataString(4)}
+          ]);
+          var options = {
+            fontName: 'San Francisco, Roboto, Arial',
+            width: '100%',
+            height: '100%',
+            animation: {
+              duration: 2500,
+              startup: true,
+              easing: 'inAndOut'
+            },
+            hAxis: {
+              format: 'H:mm',
+              minValue: [${getStartTime()},0,0],
+              slantedText: true,
+              slantedTextAngle: 30
+            },
+            series: {
+              0: {targetAxisIndex: 1, color: '#cbe5a9', lineWidth: 1, visibleInLegend: false},
+              1: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
+              2: {targetAxisIndex: 1, color: '#8CC63F'},
+              3: {targetAxisIndex: 0, color: '#F8971D'}
+            },
+            vAxes: {
+              0: {
+                title: 'Power Used (W)',
+                format: 'decimal',
+                textStyle: {color: '#F8971D'},
+                titleTextStyle: {color: '#F8971D'}
+              },
+              1: {
+                title: 'Energy Consumed (kWh)',
+                format: 'decimal',
+                textStyle: {color: '#8CC63F'},
+                titleTextStyle: {color: '#8CC63F'}
+              }
+            },
+            legend: {
+              position: 'none',
+              maxLines: 4
+            },
+            chartArea: {
+              left: '12%',
+              right: '15%',
+              top: '5%',
+              bottom: '15%',
+              height: '100%',
+              width: '100%'
+            }
+          };
+          var chart = new google.visualization.AreaChart(document.getElementById('chart_div'));
+          chart.draw(data, options);
         }
-      };
-      var chart = new google.visualization.AreaChart(document.getElementById('chart_div'));
-      chart.draw(data, options);
+          </script>
+          <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC63F; color: #f5f5f5;">Usage History</h4>
+          <div id="chart_div" style="width: 100%; height: 225px;"></div>
+        """
+        return data
+    } catch (ex) {
+        log.error "showChartHtml Exception:", ex
     }
-      </script>
-      <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC63F; color: #f5f5f5;">Usage History</h4>
-      <div id="chart_div" style="width: 100%; height: 225px;"></div>
-    """
-    return data
 }
 
 def hideChartHtml() {
-    def data = """
-    <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC63F; color: #f5f5f5;">Usage History</h4>
-    <br></br>
-    <div class="centerText">
-      <p>Waiting for more data to be collected...</p>
-      <p>This may take a little while...</p>
-    </div>
-    """
-    return data
+    try {
+        def data = """
+        <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC63F; color: #f5f5f5;">Usage History</h4>
+        <br></br>
+        <div class="centerText">
+          <p>Waiting for more data to be collected...</p>
+          <p>This may take a little while...</p>
+        </div>
+        """
+        return data
+    } catch (ex) {
+        log.error "showChartHtml Exception:", ex
+    }
 }
