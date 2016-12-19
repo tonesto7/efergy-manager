@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.1.1"}
-def versionDate() {"11-3-2016"}
+def devTypeVer() {"3.1.2"}
+def versionDate() {"12-19-2016"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -227,31 +227,31 @@ private handleData(readingData, usageData) {
             logWriter("minEnergyReading: ${state?.minEnergyReading} kWh")
         }
 
-        if(!state?.powerTable || !state?.energyTable) {
+        if(!state?.powerTable) {
             state?.powerTable = []
-            state?.energyTable = []
+            //state?.energyTable = []
             state?.dayMinPowerTable = []
             state?.dayMaxPowerTable = []
-            state?.dayMinEnergyTable = []
-            state?.dayMaxEnergyTable = []
+            //state?.dayMinEnergyTable = []
+            //state?.dayMaxEnergyTable = []
             state?.dailyPowerAvgTable = []
         }
         if(!state?.powerTableYesterday || !state?.energyTableYesterday) {
             state.powerTableYesterday = []
-            state.energyTableYesterday = []
+            //state.energyTableYesterday = []
         }
 
         def powerTable = state.powerTable
-        def energyTable = state.energyTable
+        //def energyTable = state.energyTable
 
         if (!state?.currentDay || (state.currentDay != currentDay && currentHour == 0)) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
             state.powerTableYesterday = powerTable
-            state.energyTableYesterday = energyTable
+            //state.energyTableYesterday = energyTable
 
             handleNewDay(currentPower, currentEnergy)
             powerTable = powerTable ? [] : null
-            energyTable = energyTable ? [] : null
+            //energyTable = energyTable ? [] : null
             state.currentDay = currentDay
             state.currentDayNum = currentDayNum
             if(currentDay == 1) {
@@ -270,9 +270,9 @@ private handleData(readingData, usageData) {
             def newDate = new Date()
             if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null ) {
                 powerTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentPower])
-                energyTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentEnergy])
+                //energyTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentEnergy])
                 state.powerTable = powerTable
-            	state.energyTable = energyTable
+            	//state.energyTable = energyTable
                 state.lastRecordDt = getDtNow()
                 //log.debug "powerTable: $powerTable"
                 //log.debug "energyTable: $energyTable"
@@ -292,23 +292,23 @@ def getLastRecUpdSec() { return !state?.lastRecordDt ? 100000 : GetTimeDiffSecon
 private handleNewDay(curPow, curEner) {
     def dayMinPowerTable = state?.dayMinPowerTable
     def dayMaxPowerTable = state?.dayMaxPowerTable
-    def dayMinEnergyTable = state?.dayMinEnergyTable
-    def dayMaxEnergyTable = state?.dayMaxEnergyTable
+    //def dayMinEnergyTable = state?.dayMinEnergyTable
+    //def dayMaxEnergyTable = state?.dayMaxEnergyTable
 
     dayMinPowerTable.add(state?.minPowerReading)
     dayMaxPowerTable.add(state?.maxPowerReading)
-    dayMinEnergyTable.add(state?.minEnergyReading)
-    dayMaxEnergyTable.add(state?.maxEnergyReading)
+    //dayMinEnergyTable.add(state?.minEnergyReading)
+    //dayMaxEnergyTable.add(state?.maxEnergyReading)
 
     state?.minPowerReading = curPow
     state?.maxPowerReading = curPow
-    state?.minEnergyReading = curEner
-    state?.maxEnergyReading = curEner
+    //state?.minEnergyReading = curEner
+    //state?.maxEnergyReading = curEner
 
     state?.dayMinPowerTable = dayMinPowerTable
     state?.dayMaxPowerTable = dayMaxPowerTable
-    state?.dayMinEnergyTable = dayMinEnergyTable
-    state?.dayMaxEnergyTable = dayMaxEnergyTable
+    //state?.dayMinEnergyTable = dayMinEnergyTable
+    //state?.dayMaxEnergyTable = dayMaxEnergyTable
 
     def dailyPowerAvgTable = state?.dailyPowerAvgTable
     def dPwrAvg = getDayPowerAvg()
@@ -323,52 +323,52 @@ private handleNewDay(curPow, curEner) {
 def handleNewWeek() {
     def wkMinPowerTable = state?.wkMinPowerTable
     def wkMaxPowerTable = state?.wkMaxPowerTable
-    def wkMinEnergyTable = state?.wkMinEnergyTable
-    def wkMaxEnergyTable = state?.wkMaxEnergyTable
+    // def wkMinEnergyTable = state?.wkMinEnergyTable
+    // def wkMaxEnergyTable = state?.wkMaxEnergyTable
     def wkPowerAvgTable = state?.wkPowerAvgTable
 
     wkMinPowerTable.add(state?.dayMinPowerTable)
     wkMaxPowerTable.add(state?.dayMaxPowerTable)
-    wkMinEnergyTable.add(state?.dayMinEnergyTable)
-    wkMaxEnergyTable.add(state?.dayMaxEnergyTable)
+    // wkMinEnergyTable.add(state?.dayMinEnergyTable)
+    // wkMaxEnergyTable.add(state?.dayMaxEnergyTable)
     wlPowerAvgTable.add(state?.dayPowerAvgTable)
 
     state?.wkMinPowerTable = wkMinPowerTable
     state?.wkMaxPowerTable = wkMaxPowerTable
-    state?.wkMinEnergyTable = wkMinEnergyTable
-    state?.wkMaxEnergyTable = wkMaxEnergyTable
+    // state?.wkMaxEnergyTable = wkMaxEnergyTable
+    // state?.wkMinEnergyTable = wkMinEnergyTable
     state?.wkPowerAvgTable = wkPowerAvgTable
 
     state?.dayMinPowerTable = []
     state?.dayMaxPowerTable = []
-    state?.dayMinEnergyTable = []
-    state?.dayMaxEnergyTable = []
+    // state?.dayMinEnergyTable = []
+    // state?.dayMaxEnergyTable = []
     state?.dayPowerAvgTable = []
 }
 
 def handleNewMonth() {
     def monMinPowerTable = state?.monMinPowerTable
     def monMaxPowerTable = state?.monMaxPowerTable
-    def monMinEnergyTable = state?.monMinEnergyTable
-    def monMaxEnergyTable = state?.monMaxEnergyTable
+    // def monMinEnergyTable = state?.monMinEnergyTable
+    // def monMaxEnergyTable = state?.monMaxEnergyTable
     def monPowerAvgTable = state?.monPowerAvgTable
 
     monMinPowerTable.add(state?.wkMinPowerTable)
     monMaxPowerTable.add(state?.wkMaxPowerTable)
-    monMinEnergyTable.add(state?.wkMinEnergyTable)
-    monMaxEnergyTable.add(state?.wkMaxEnergyTable)
+    // monMinEnergyTable.add(state?.wkMinEnergyTable)
+    // monMaxEnergyTable.add(state?.wkMaxEnergyTable)
     monPowerAvgTable.add(state?.wkPowerAvgTable)
 
     state?.monMinPowerTable = monMinPowerTable
     state?.monMaxPowerTable = monMaxPowerTable
-    state?.monMinEnergyTable = monMinEnergyTable
-    state?.monMaxEnergyTable = monMaxEnergyTable
+    // state?.monMinEnergyTable = monMinEnergyTable
+    // state?.monMaxEnergyTable = monMaxEnergyTable
     state?.monPowerAvgTable = monPowerAvgTable
 
     state?.wkMinPowerTable = []
     state?.wkMaxPowerTable = []
-    state?.wkMinEnergyTable = []
-    state?.wkMaxEnergyTable = []
+    // state?.wkMinEnergyTable = []
+    // state?.wkMaxEnergyTable = []
     state?.wkPowerAvgTable = []
 }
 
@@ -664,20 +664,14 @@ String getDataString(Integer seriesIndex) {
 	def dataTable = []
 	switch (seriesIndex) {
 		case 1:
-			dataTable = state.energyTableYesterday
-			break
-		case 2:
 			dataTable = state.powerTableYesterday
 			break
-		case 3:
-			dataTable = state.energyTable
-			break
-		case 4:
+		case 2:
 			dataTable = state.powerTable
 			break
 	}
 	dataTable.each() {
-		def dataArray = [[it[0],it[1],0],null,null,null,null]
+		def dataArray = [[it[0],it[1],0],null,null]
 		dataArray[seriesIndex] = it[2]
 		dataString += dataArray.toString() + ","
 	}
@@ -786,7 +780,7 @@ def getMaxVal(Integer item) {
 def getGraphHTML() {
     try {
         def updateAvail = !state?.updateAvailable ? "" : """<h3 style="background: #ffa500;">Device Update Available!</h3>"""
-        def chartHtml = (state?.powerTable.size() > 0 && state?.energyTable?.size() > 0) ? showChartHtml() : hideChartHtml()
+        def chartHtml = (state?.powerTable.size() > 0) ? showChartHtml() : hideChartHtml()
         def html = """
         <!DOCTYPE html>
         <html>
@@ -867,15 +861,11 @@ def showChartHtml() {
           function drawGraph() {
           var data = new google.visualization.DataTable();
           data.addColumn('timeofday', 'time');
-          data.addColumn('number', 'Energy (Yesterday)');
           data.addColumn('number', 'Power (Yesterday)');
-          data.addColumn('number', 'Energy (Today)');
           data.addColumn('number', 'Power (Today)');
           data.addRows([
             ${getDataString(1)}
             ${getDataString(2)}
-            ${getDataString(3)}
-            ${getDataString(4)}
           ]);
           var options = {
             fontName: 'San Francisco, Roboto, Arial',
@@ -893,10 +883,8 @@ def showChartHtml() {
               slantedTextAngle: 30
             },
             series: {
-              0: {targetAxisIndex: 1, color: '#cbe5a9', lineWidth: 1, visibleInLegend: false},
-              1: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
-              2: {targetAxisIndex: 1, color: '#8CC63F'},
-              3: {targetAxisIndex: 0, color: '#F8971D'}
+              0: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
+              1: {targetAxisIndex: 0, color: '#F8971D'}
             },
             vAxes: {
               0: {
@@ -904,13 +892,8 @@ def showChartHtml() {
                 format: 'decimal',
                 textStyle: {color: '#F8971D'},
                 titleTextStyle: {color: '#F8971D'}
-              },
-              1: {
-                title: 'Energy Consumed (kWh)',
-                format: 'decimal',
-                textStyle: {color: '#8CC63F'},
-                titleTextStyle: {color: '#8CC63F'}
               }
+
             },
             legend: {
               position: 'none',
