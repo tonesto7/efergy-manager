@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.1.2"}
-def versionDate() {"12-19-2016"}
+def devTypeVer() {"3.1.3"}
+def versionDate() {"12-20-2016"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -243,14 +243,12 @@ private handleData(readingData, usageData) {
 
         def powerTable = state.powerTable
         //def energyTable = state.energyTable
-
-        if (!state?.currentDay || (state.currentDay != currentDay && currentHour == 0)) {
+        if (!state?.currentDay || (state.currentDay != currentDay)) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
             state.powerTableYesterday = powerTable
             //state.energyTableYesterday = energyTable
-
             handleNewDay(currentPower, currentEnergy)
-            powerTable = powerTable ? [] : null
+            powerTable = []
             //energyTable = energyTable ? [] : null
             state.currentDay = currentDay
             state.currentDayNum = currentDayNum
