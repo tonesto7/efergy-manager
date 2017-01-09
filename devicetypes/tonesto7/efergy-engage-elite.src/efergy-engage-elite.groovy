@@ -177,7 +177,7 @@ def clearHistory() {
 private handleData(readingData, usageData) {
     //log.trace "handleData ($localTime, $power, $energy)"
     //clearHistory()
-    state?.lastRecordDt = null
+    //state?.lastRecordDt = null
     try {
         def today = new Date()
         def currentHour = today.format("HH", location.timeZone) as Integer
@@ -294,9 +294,9 @@ def collectEnergy(val) {
         return
     }
     def enerVal = state?.energyVal
-    log.debug "collectEnergy: val: $val | Last: ${enerVal}"
+    //log.debug "collectEnergy: val: $val | Last: ${enerVal}"
     def res = (val.toDouble() - enerVal.toDouble()).round(2)
-    log.debug "res: $res | = ${(enerVal.toDouble() + res)}"
+    //log.debug "res: $res | = ${(enerVal.toDouble() + res)}"
     if(res > val) {
         state?.energyList = (enerVal.toDouble() + res)
     }
@@ -335,7 +335,7 @@ private handleNewDay(curPow, curEner) {
     // state?.dayMinEnergyTable = []
     // state?.dayMaxEnergyTable = []
     state?.dayPowerAvgTable = []
-    
+
     def dailyPowerAvgTable = state?.dailyPowerAvgTable
     def dPwrAvg = getDayPowerAvg()
     if(dPwrAvg != null) {
