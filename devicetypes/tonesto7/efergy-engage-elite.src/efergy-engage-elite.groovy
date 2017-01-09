@@ -166,6 +166,7 @@ void generateEvent(Map eventData) {
 
 def clearHistory() {
     log.trace "Clearing History..."
+    state?.energyVal = null
     state?.powerTable = null
     state?.powerTableYesterday = null
     state?.energyTable = null
@@ -176,7 +177,7 @@ def clearHistory() {
 private handleData(readingData, usageData) {
     //log.trace "handleData ($localTime, $power, $energy)"
     //clearHistory()
-    //state?.lastRecordDt = null
+    state?.lastRecordDt = null
     try {
         def today = new Date()
         def currentHour = today.format("HH", location.timeZone) as Integer
@@ -267,8 +268,10 @@ private handleData(readingData, usageData) {
         if (currentPower > 0 || powerTable?.size() != 0) {
             def newDate = new Date()
             if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null ) {
-                powerTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentPower])
+                collectEnergy(currentEnergy)
+                powerTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentPower, getCurrentEnergy()])
                 //energyTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentEnergy])
+                log.debug "powerTable: ${powerTable}"
                 state.powerTable = powerTable
             	//state.energyTable = energyTable
                 state.lastRecordDt = getDtNow()
@@ -282,6 +285,26 @@ private handleData(readingData, usageData) {
         }
     } catch (ex) {
         log.error "handleData Exception:", ex
+    }
+}
+
+def collectEnergy(val) {
+    if (!state?.energyVal) {
+        state?.energyVal = val
+        return
+    }
+    def enerVal = state?.energyVal
+    log.debug "collectEnergy: val: $val | Last: ${enerVal}"
+    def res = (val.toDouble() - enerVal.toDouble()).round(2)
+    log.debug "res: $res | = ${(enerVal.toDouble() + res)}"
+    if(res > val) {
+        state?.energyList = (enerVal.toDouble() + res)
+    }
+}
+
+def getCurrentEnergy() {
+    if(state?.energyVal) {
+        return state?.energyVal ?: 0
     }
 }
 
@@ -307,7 +330,12 @@ private handleNewDay(curPow, curEner) {
     state?.dayMaxPowerTable = dayMaxPowerTable
     //state?.dayMinEnergyTable = dayMinEnergyTable
     //state?.dayMaxEnergyTable = dayMaxEnergyTable
-
+    state?.dayMinPowerTable = []
+    state?.dayMaxPowerTable = []
+    // state?.dayMinEnergyTable = []
+    // state?.dayMaxEnergyTable = []
+    state?.dayPowerAvgTable = []
+    
     def dailyPowerAvgTable = state?.dailyPowerAvgTable
     def dPwrAvg = getDayPowerAvg()
     if(dPwrAvg != null) {
@@ -400,7 +428,6 @@ def getDayPowerAvg() {
         log.error "getDayPowerAvg Exception:", ex
     }
 }
-
 
 def getAverage(items) {
     def tmpAvg = []
