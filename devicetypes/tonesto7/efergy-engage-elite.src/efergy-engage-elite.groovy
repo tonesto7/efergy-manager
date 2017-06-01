@@ -245,7 +245,6 @@ private handleData(readingData, usageData) {
 
         def powerTable = state?.powerTable
         //def energyTable = state.energyTable
-        log.debug "NewDay: (State: ${state.currentDay}) | ${currentDay} = [${!state?.currentDay || currentDay.toInteger() != state?.currentDay.toInteger()}]"
         if (!state?.currentDay || currentDay.toInteger() != state?.currentDay.toInteger()) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
             state.powerTableYesterday = powerTable
@@ -260,7 +259,6 @@ private handleData(readingData, usageData) {
                 handleNewWeek()
             }
         }
-        log.debug "NewMonth: (State: ${state.currentMonth}) | ${currentMonth} = [${!state?.currentMonth || currentMonth.toInteger() != state?.currentMonth.toInteger() && currentHour.toInteger() < 24}]"
         if (!state?.currentMonth || (currentMonth.toInteger() != state.currentMonth.toInteger() && currentHour < 24)) {
             log.debug "currentMonth ($currentMonth) is != to State (${state?.currentMonth})"
 
@@ -268,7 +266,6 @@ private handleData(readingData, usageData) {
             state.currentMonth = currentMonth
         }
 
-        log.debug "NewYear: (State: ${state.currentYear}) | ${currentYear} = [${!state?.currentYear || currentYear.toInteger() != state?.currentYear.toInteger() && currentHour.toInteger() < 24}]"
         if (!state?.currentYear || (currentYear.toInteger() != state.currentYear.toInteger() && currentHour < 24)) {
             log.debug "currentYear ($currentYear) is != to State (${state?.currentYear})"
 
