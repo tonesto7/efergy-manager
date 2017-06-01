@@ -198,8 +198,8 @@ private handleData(readingData, usageData) {
         // log.debug("currentMonth: $currentMonth | (state): ${state?.currentMonth}")
         // log.debug("currentYear: $currentYear | (state): ${state?.currentYear}")
 
-        // log.debug("currentPower: $currentPower")
-        // log.debug("currentEnergy: $currentEnergy")
+        log.debug("currentPower: ${currentPower}W")
+        log.debug("currentEnergy: ${currentEnergy}kWh")
 
         state.lastPower = currentPower
         logWriter("lastPower: ${state?.lastPower}")
@@ -231,46 +231,46 @@ private handleData(readingData, usageData) {
 
         if(!state?.powerTable) {
             state?.powerTable = []
-            //state?.energyTable = []
             state?.dayMinPowerTable = []
             state?.dayMaxPowerTable = []
-            //state?.dayMinEnergyTable = []
-            //state?.dayMaxEnergyTable = []
             state?.dailyPowerAvgTable = []
+        }
+        if(!state?.energyTable) {
+            state?.energyTable = []
+            state?.dayMinEnergyTable = []
+            state?.dayMaxEnergyTable = []
         }
         if(!state?.powerTableYesterday || !state?.energyTableYesterday) {
             state.powerTableYesterday = []
-            //state.energyTableYesterday = []
+            state.energyTableYesterday = []
         }
 
         def powerTable = state?.powerTable
-        //def energyTable = state.energyTable
+        def energyTable = state?.energyTable
         if (!state?.currentDay || currentDay.toInteger() != state?.currentDay.toInteger()) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
             state.powerTableYesterday = powerTable
-            //state.energyTableYesterday = energyTable
+            state.energyTableYesterday = energyTable
             handleNewDay(currentPower, currentEnergy)
             powerTable = []
-            //energyTable = energyTable ? [] : null
+            energyTable = energyTable ? [] : null
             state.currentDay = currentDay
             state.currentDayNum = currentDayNum
-            if(currentDay == 1) {
+            if(currentDay.toInteger() == 1) {
                 log.debug "new week"
                 handleNewWeek()
             }
         }
         if (!state?.currentMonth || (currentMonth.toInteger() != state.currentMonth.toInteger() && currentHour < 24)) {
             log.debug "currentMonth ($currentMonth) is != to State (${state?.currentMonth})"
-
             handleNewMonth()
             state.currentMonth = currentMonth
         }
 
         if (!state?.currentYear || (currentYear.toInteger() != state.currentYear.toInteger() && currentHour < 24)) {
             log.debug "currentYear ($currentYear) is != to State (${state?.currentYear})"
-
-            //handleNewYear()
-            //state.currentYear = currentYear
+            handleNewYear()
+            state.currentYear = currentYear
         }
 
         if (currentPower > 0 || powerTable?.size() != 0) {
@@ -278,10 +278,10 @@ private handleData(readingData, usageData) {
             if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null ) {
                 collectEnergy(currentEnergy)
                 powerTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentPower, getCurrentEnergy()])
-                //energyTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentEnergy])
+                energyTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentEnergy])
                 //log.debug "powerTable: ${powerTable}"
                 state.powerTable = powerTable
-            	//state.energyTable = energyTable
+            	state.energyTable = energyTable
                 state.lastRecordDt = getDtNow()
                 //log.debug "powerTable: $powerTable"
                 //log.debug "energyTable: $energyTable"
@@ -322,27 +322,27 @@ private handleNewDay(curPow, curEner) {
     log.trace "handleNewDay"
     def dayMinPowerTable = state?.dayMinPowerTable ?: []
     def dayMaxPowerTable = state?.dayMaxPowerTable ?: []
-    //def dayMinEnergyTable = state?.dayMinEnergyTable
-    //def dayMaxEnergyTable = state?.dayMaxEnergyTable
+    def dayMinEnergyTable = state?.dayMinEnergyTable ?: []
+    def dayMaxEnergyTable = state?.dayMaxEnergyTable ?: []
 
     dayMinPowerTable.add(state?.minPowerReading)
     dayMaxPowerTable.add(state?.maxPowerReading)
-    //dayMinEnergyTable.add(state?.minEnergyReading)
-    //dayMaxEnergyTable.add(state?.maxEnergyReading)
+    dayMinEnergyTable.add(state?.minEnergyReading)
+    dayMaxEnergyTable.add(state?.maxEnergyReading)
 
     state?.minPowerReading = curPow
     state?.maxPowerReading = curPow
-    //state?.minEnergyReading = curEner
-    //state?.maxEnergyReading = curEner
+    state?.minEnergyReading = curEner
+    state?.maxEnergyReading = curEner
 
     state?.dayMinPowerTable = dayMinPowerTable
     state?.dayMaxPowerTable = dayMaxPowerTable
-    //state?.dayMinEnergyTable = dayMinEnergyTable
-    //state?.dayMaxEnergyTable = dayMaxEnergyTable
+    state?.dayMinEnergyTable = dayMinEnergyTable
+    state?.dayMaxEnergyTable = dayMaxEnergyTable
     state?.dayMinPowerTable = []
     state?.dayMaxPowerTable = []
-    // state?.dayMinEnergyTable = []
-    // state?.dayMaxEnergyTable = []
+    state?.dayMinEnergyTable = []
+    state?.dayMaxEnergyTable = []
     state?.dayPowerAvgTable = []
 
     def dailyPowerAvgTable = state?.dailyPowerAvgTable
@@ -358,90 +358,90 @@ private handleNewDay(curPow, curEner) {
 def handleNewWeek() {
     def wkMinPowerTable = state?.wkMinPowerTable ?: []
     def wkMaxPowerTable = state?.wkMaxPowerTable ?: []
-    // def wkMinEnergyTable = state?.wkMinEnergyTable
-    // def wkMaxEnergyTable = state?.wkMaxEnergyTable
+    def wkMinEnergyTable = state?.wkMinEnergyTable ?: []
+    def wkMaxEnergyTable = state?.wkMaxEnergyTable ?: []
     def wkPowerAvgTable = state?.wkPowerAvgTable ?: []
 
     wkMinPowerTable.add(state?.dayMinPowerTable)
     wkMaxPowerTable.add(state?.dayMaxPowerTable)
-    // wkMinEnergyTable.add(state?.dayMinEnergyTable)
-    // wkMaxEnergyTable.add(state?.dayMaxEnergyTable)
+    wkMinEnergyTable.add(state?.dayMinEnergyTable)
+    wkMaxEnergyTable.add(state?.dayMaxEnergyTable)
     wlPowerAvgTable.add(state?.dayPowerAvgTable)
 
     state?.wkMinPowerTable = wkMinPowerTable
     state?.wkMaxPowerTable = wkMaxPowerTable
-    // state?.wkMaxEnergyTable = wkMaxEnergyTable
-    // state?.wkMinEnergyTable = wkMinEnergyTable
+    state?.wkMaxEnergyTable = wkMaxEnergyTable
+    state?.wkMinEnergyTable = wkMinEnergyTable
     state?.wkPowerAvgTable = wkPowerAvgTable
 
     def monMinPowerTable = state?.monMinPowerTable ?: []
     def monMaxPowerTable = state?.monMaxPowerTable ?: []
-    // def monMinEnergyTable = state?.monMinEnergyTable
-    // def monMaxEnergyTable = state?.monMaxEnergyTable
+    def monMinEnergyTable = state?.monMinEnergyTable ?: []
+    def monMaxEnergyTable = state?.monMaxEnergyTable ?: []
     def monPowerAvgTable = state?.monPowerAvgTable ?: []
 
     monMinPowerTable.add(wkMinPowerTable)
     monMaxPowerTable.add(wkMaxPowerTable)
-    // monMinEnergyTable.add(wkMinEnergyTable)
-    // monMaxEnergyTable.add(wkMaxEnergyTable)
+    monMinEnergyTable.add(wkMinEnergyTable)
+    monMaxEnergyTable.add(wkMaxEnergyTable)
     monPowerAvgTable.add(wkPowerAvgTable)
 
     state?.monMinPowerTable = monMinPowerTable
     state?.monMaxPowerTable = monMaxPowerTable
-    // state?.monMinEnergyTable = monMinEnergyTable
-    // state?.monMaxEnergyTable = monMaxEnergyTable
+    state?.monMinEnergyTable = monMinEnergyTable
+    state?.monMaxEnergyTable = monMaxEnergyTable
     state?.monPowerAvgTable = monPowerAvgTable
 
     state?.dayMinPowerTable = []
     state?.dayMaxPowerTable = []
-    // state?.dayMinEnergyTable = []
-    // state?.dayMaxEnergyTable = []
+    state?.dayMinEnergyTable = []
+    state?.dayMaxEnergyTable = []
     state?.dayPowerAvgTable = []
 }
 
 def handleNewMonth() {
     def monMinPowerTable = state?.monMinPowerTable ?: []
     def monMaxPowerTable = state?.monMaxPowerTable ?: []
-    // def monMinEnergyTable = state?.monMinEnergyTable
-    // def monMaxEnergyTable = state?.monMaxEnergyTable
+    def monMinEnergyTable = state?.monMinEnergyTable ?: []
+    def monMaxEnergyTable = state?.monMaxEnergyTable ?: []
     def monPowerAvgTable = state?.monPowerAvgTable ?: []
 
     def yearMinPowerTable = state?.yearMinPowerTable ?: []
     def yearMaxPowerTable = state?.yearMaxPowerTable ?: []
-    // def monMinEnergyTable = state?.monMinEnergyTable
-    // def monMaxEnergyTable = state?.monMaxEnergyTable
+    def yearMinEnergyTable = state?.yearMinEnergyTable ?: []
+    def yearMaxEnergyTable = state?.yearMaxEnergyTable ?: []
     def yearPowerAvgTable = state?.yearPowerAvgTable ?: []
 
     yearMinPowerTable.add(monMinPowerTable)
     yearMaxPowerTable.add(monMaxPowerTable)
-    // yearMinEnergyTable.add(state?.monMinEnergyTable)
-    // yearMaxEnergyTable.add(state?.monMaxEnergyTable)
+    yearMinEnergyTable.add(monMinEnergyTable)
+    yearMaxEnergyTable.add(monMaxEnergyTable)
     yearPowerAvgTable.add(monPowerAvgTable)
 
     state?.yearMinPowerTable = yearMinPowerTable
     state?.yearMaxPowerTable = yearMaxPowerTable
-    // state?.yearnMinEnergyTable = yearMinEnergyTable
-    // state?.yearMaxEnergyTable = yearMaxEnergyTable
+    state?.yearnMinEnergyTable = yearMinEnergyTable
+    state?.yearMaxEnergyTable = yearMaxEnergyTable
     state?.yearPowerAvgTable = yearPowerAvgTable
 
     state?.wkMinPowerTable = []
     state?.wkMaxPowerTable = []
-    // state?.wkMinEnergyTable = []
-    // state?.wkMaxEnergyTable = []
+    state?.wkMinEnergyTable = []
+    state?.wkMaxEnergyTable = []
     state?.wkPowerAvgTable = []
 }
 
 def handleNewYear() {
     state?.prevYearMinPowerTable = state?.yearMinPowerTable ?: []
     state?.prevYearMaxPowerTable = state?.yearMaxPowerTable ?: []
-    //state?.prevYearMinEnergyTable = state?.yearMinEnergyTable
-    //state?.prevYearMaxEnergyTable = state?.yearMaxEnergyTable
+    state?.prevYearMinEnergyTable = state?.yearMinEnergyTable ?: []
+    state?.prevYearMaxEnergyTable = state?.yearMaxEnergyTable ?: []
     state?.prevYearPowerAvgTable = state?.yearPowerAvgTable ?: []
 
     state?.yearMinPowerTable = []
     state?.yearMaxPowerTable = []
-    //state?.yearMinEnergyTable = []
-    //state?.yearMaxEnergyTable = []
+    state?.yearMinEnergyTable = []
+    state?.yearMaxEnergyTable = []
     state?.yearPowerAvgTable = []
 }
 
@@ -741,9 +741,15 @@ String getDataString(Integer seriesIndex) {
 		case 2:
 			dataTable = state.powerTable
 			break
+        case 3:
+			dataTable = state.energyTableYesterday
+			break
+        case 4:
+			dataTable = state.energyTable
+			break
 	}
 	dataTable.each() {
-		def dataArray = [[it[0],it[1],0],null,null]
+		def dataArray = [[it[0],it[1],0],null,null,null,null]
 		dataArray[seriesIndex] = it[2]
 		dataString += dataArray.toString() + ","
 	}
@@ -935,9 +941,13 @@ def showChartHtml() {
           data.addColumn('timeofday', 'time');
           data.addColumn('number', 'Power (Yesterday)');
           data.addColumn('number', 'Power (Today)');
+          data.addColumn('number', 'Energy (Yesterday)');
+          data.addColumn('number', 'Energy (Today)');
           data.addRows([
             ${getDataString(1)}
             ${getDataString(2)}
+            ${getDataString(3)}
+            ${getDataString(4)}
           ]);
           var options = {
             fontName: 'San Francisco, Roboto, Arial',
@@ -956,7 +966,9 @@ def showChartHtml() {
             },
             series: {
               0: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
-              1: {targetAxisIndex: 0, color: '#F8971D'}
+              1: {targetAxisIndex: 0, color: '#F8971D'},
+              2: {targetAxisIndex: 0},
+              3: {targetAxisIndex: 0},
             },
             vAxes: {
               0: {
@@ -964,6 +976,10 @@ def showChartHtml() {
                 format: 'decimal',
                 textStyle: {color: '#F8971D'},
                 titleTextStyle: {color: '#F8971D'}
+              },
+              1: {
+                title: 'Energy Used (kWh)',
+                format: 'decimal',
               }
 
             },
