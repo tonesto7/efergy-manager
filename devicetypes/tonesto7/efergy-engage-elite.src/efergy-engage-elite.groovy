@@ -856,7 +856,7 @@ def getMaxVal(Integer item) {
 def getGraphHTML() {
     try {
         def updateAvail = !state?.updateAvailable ? "" : """<h3 style="background: #ffa500;">Device Update Available!</h3>"""
-        def chartHtml = (state?.powerTable.size() > 0) ? showChartHtml() : hideChartHtml()
+        def chartHtml = (state?.powerTable.size() > 0 || state?.energyTable?.size() > 0) ? showChartHtml() : hideChartHtml()
         def html = """
         <!DOCTYPE html>
         <html>
