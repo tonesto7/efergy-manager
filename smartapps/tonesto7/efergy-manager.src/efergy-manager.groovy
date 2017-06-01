@@ -38,8 +38,8 @@ definition(
 	Add offline Hub handling to verify that the hub is online instead of generating errors.
 */
 
-def appVersion() { "3.1.0" }
-def appVerDate() { "11-1-2016" }
+def appVersion() { "3.1.1" }
+def appVerDate() { "6-1-2017" }
 def appVerInfo() {
 	def str = ""
 
@@ -1012,7 +1012,7 @@ def getEfergyData(url, pathStr) {
 			}
 		}
 	} catch (ex) {
-		apiIssueEvent(false)
+		apiIssueEvent(true)
 		log.error "getEfergyData Exception:", ex
 	}
 }

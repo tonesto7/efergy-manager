@@ -1,7 +1,7 @@
 /**
 *  Efergy Engage Energy
 *
-*  Copyright 2016 Anthony S.
+*  Copyright 2017 Anthony S.
 *
 *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 *  in compliance with the License. You may obtain a copy of the License at:
@@ -18,7 +18,7 @@
 import java.text.SimpleDateFormat
 
 def devTypeVer() {"3.1.3"}
-def versionDate() {"12-20-2016"}
+def versionDate() {"6-1-2017"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -180,11 +180,11 @@ private handleData(readingData, usageData) {
     //state?.lastRecordDt = null
     try {
         def today = new Date()
-        def currentHour = today.format("HH", location.timeZone) as Integer
-        def currentDay = today.format("dd", location.timeZone) //1...31
-        def currentDayNum = today.format("u", location.timeZone) as Integer // 1 = Monday,... 7 = Sunday
-        def currentMonth = today.format("MM", location.timeZone)
-        def currentYear = today.format("YYYY", location.timeZone) as Integer
+        def currentHour = today.format("HH") as Integer
+        def currentDay = today.format("dd") //1...31
+        def currentDayNum = today.format("u") as Integer // 1 = Monday,... 7 = Sunday
+        def currentMonth = today.format("MM")
+        def currentYear = today.format("YYYY") as Integer
         if(state?.currentDay == null) { state?.currentDay = currentDay }
         if(state?.currentDayNum == null) { state?.currentDayNum = currentDayNum }
         if(state?.currentYear == null) { state?.currentYear = currentYear }
@@ -192,13 +192,14 @@ private handleData(readingData, usageData) {
         def currentEnergy = usageData?.todayUsage
         def currentPower = readingData?.powerReading
 
-        logWriter("currentDay: $currentDay | (state): ${state?.currentDay}")
-        logWriter("currentDayNum: $currentDayNum | (state): ${state?.currentDayNum}")
-        logWriter("currentMonth: $currentMonth | (state): ${state?.currentMonth}")
-        logWriter("currentYear: $currentYear | (state): ${state?.currentYear}")
+        // log.debug("currentHour: $currentHour | (state): ${state?.currentHour}")
+        // log.debug("currentDay: $currentDay | (state): ${state?.currentDay}")
+        // log.debug("currentDayNum: $currentDayNum | (state): ${state?.currentDayNum}")
+        // log.debug("currentMonth: $currentMonth | (state): ${state?.currentMonth}")
+        // log.debug("currentYear: $currentYear | (state): ${state?.currentYear}")
 
-        logWriter("currentPower: $currentPower")
-        logWriter("currentEnergy: $currentEnergy")
+        // log.debug("currentPower: $currentPower")
+        // log.debug("currentEnergy: $currentEnergy")
 
         state.lastPower = currentPower
         logWriter("lastPower: ${state?.lastPower}")
@@ -242,9 +243,10 @@ private handleData(readingData, usageData) {
             //state.energyTableYesterday = []
         }
 
-        def powerTable = state.powerTable
+        def powerTable = state?.powerTable
         //def energyTable = state.energyTable
-        if (!state?.currentDay || (state.currentDay != currentDay)) {
+        log.debug "NewDay: (State: ${state.currentDay}) | ${currentDay} = [${!state?.currentDay || currentDay.toInteger() != state?.currentDay.toInteger()}]"
+        if (!state?.currentDay || currentDay.toInteger() != state?.currentDay.toInteger()) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
             state.powerTableYesterday = powerTable
             //state.energyTableYesterday = energyTable
@@ -258,11 +260,20 @@ private handleData(readingData, usageData) {
                 handleNewWeek()
             }
         }
-        if (!state?.currentMonth || (state.currentMonth != currentMonth && currentHour == 0)) {
+        log.debug "NewMonth: (State: ${state.currentMonth}) | ${currentMonth} = [${!state?.currentMonth || currentMonth.toInteger() != state?.currentMonth.toInteger() && currentHour.toInteger() < 24}]"
+        if (!state?.currentMonth || (currentMonth.toInteger() != state.currentMonth.toInteger() && currentHour < 24)) {
             log.debug "currentMonth ($currentMonth) is != to State (${state?.currentMonth})"
 
             handleNewMonth()
             state.currentMonth = currentMonth
+        }
+
+        log.debug "NewYear: (State: ${state.currentYear}) | ${currentYear} = [${!state?.currentYear || currentYear.toInteger() != state?.currentYear.toInteger() && currentHour.toInteger() < 24}]"
+        if (!state?.currentYear || (currentYear.toInteger() != state.currentYear.toInteger() && currentHour < 24)) {
+            log.debug "currentYear ($currentYear) is != to State (${state?.currentYear})"
+
+            //handleNewYear()
+            //state.currentYear = currentYear
         }
 
         if (currentPower > 0 || powerTable?.size() != 0) {
@@ -271,7 +282,7 @@ private handleData(readingData, usageData) {
                 collectEnergy(currentEnergy)
                 powerTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentPower, getCurrentEnergy()])
                 //energyTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentEnergy])
-                log.debug "powerTable: ${powerTable}"
+                //log.debug "powerTable: ${powerTable}"
                 state.powerTable = powerTable
             	//state.energyTable = energyTable
                 state.lastRecordDt = getDtNow()
@@ -311,8 +322,9 @@ def getCurrentEnergy() {
 def getLastRecUpdSec() { return !state?.lastRecordDt ? 100000 : GetTimeDiffSeconds(state?.lastRecordDt, "getLastRecUpdSec")?.toInteger() }
 
 private handleNewDay(curPow, curEner) {
-    def dayMinPowerTable = state?.dayMinPowerTable
-    def dayMaxPowerTable = state?.dayMaxPowerTable
+    log.trace "handleNewDay"
+    def dayMinPowerTable = state?.dayMinPowerTable ?: []
+    def dayMaxPowerTable = state?.dayMaxPowerTable ?: []
     //def dayMinEnergyTable = state?.dayMinEnergyTable
     //def dayMaxEnergyTable = state?.dayMaxEnergyTable
 
@@ -347,11 +359,11 @@ private handleNewDay(curPow, curEner) {
 }
 
 def handleNewWeek() {
-    def wkMinPowerTable = state?.wkMinPowerTable
-    def wkMaxPowerTable = state?.wkMaxPowerTable
+    def wkMinPowerTable = state?.wkMinPowerTable ?: []
+    def wkMaxPowerTable = state?.wkMaxPowerTable ?: []
     // def wkMinEnergyTable = state?.wkMinEnergyTable
     // def wkMaxEnergyTable = state?.wkMaxEnergyTable
-    def wkPowerAvgTable = state?.wkPowerAvgTable
+    def wkPowerAvgTable = state?.wkPowerAvgTable ?: []
 
     wkMinPowerTable.add(state?.dayMinPowerTable)
     wkMaxPowerTable.add(state?.dayMaxPowerTable)
@@ -365,6 +377,24 @@ def handleNewWeek() {
     // state?.wkMinEnergyTable = wkMinEnergyTable
     state?.wkPowerAvgTable = wkPowerAvgTable
 
+    def monMinPowerTable = state?.monMinPowerTable ?: []
+    def monMaxPowerTable = state?.monMaxPowerTable ?: []
+    // def monMinEnergyTable = state?.monMinEnergyTable
+    // def monMaxEnergyTable = state?.monMaxEnergyTable
+    def monPowerAvgTable = state?.monPowerAvgTable ?: []
+
+    monMinPowerTable.add(wkMinPowerTable)
+    monMaxPowerTable.add(wkMaxPowerTable)
+    // monMinEnergyTable.add(wkMinEnergyTable)
+    // monMaxEnergyTable.add(wkMaxEnergyTable)
+    monPowerAvgTable.add(wkPowerAvgTable)
+
+    state?.monMinPowerTable = monMinPowerTable
+    state?.monMaxPowerTable = monMaxPowerTable
+    // state?.monMinEnergyTable = monMinEnergyTable
+    // state?.monMaxEnergyTable = monMaxEnergyTable
+    state?.monPowerAvgTable = monPowerAvgTable
+
     state?.dayMinPowerTable = []
     state?.dayMaxPowerTable = []
     // state?.dayMinEnergyTable = []
@@ -373,29 +403,49 @@ def handleNewWeek() {
 }
 
 def handleNewMonth() {
-    def monMinPowerTable = state?.monMinPowerTable
-    def monMaxPowerTable = state?.monMaxPowerTable
+    def monMinPowerTable = state?.monMinPowerTable ?: []
+    def monMaxPowerTable = state?.monMaxPowerTable ?: []
     // def monMinEnergyTable = state?.monMinEnergyTable
     // def monMaxEnergyTable = state?.monMaxEnergyTable
-    def monPowerAvgTable = state?.monPowerAvgTable
+    def monPowerAvgTable = state?.monPowerAvgTable ?: []
 
-    monMinPowerTable.add(state?.wkMinPowerTable)
-    monMaxPowerTable.add(state?.wkMaxPowerTable)
-    // monMinEnergyTable.add(state?.wkMinEnergyTable)
-    // monMaxEnergyTable.add(state?.wkMaxEnergyTable)
-    monPowerAvgTable.add(state?.wkPowerAvgTable)
+    def yearMinPowerTable = state?.yearMinPowerTable ?: []
+    def yearMaxPowerTable = state?.yearMaxPowerTable ?: []
+    // def monMinEnergyTable = state?.monMinEnergyTable
+    // def monMaxEnergyTable = state?.monMaxEnergyTable
+    def yearPowerAvgTable = state?.yearPowerAvgTable ?: []
 
-    state?.monMinPowerTable = monMinPowerTable
-    state?.monMaxPowerTable = monMaxPowerTable
-    // state?.monMinEnergyTable = monMinEnergyTable
-    // state?.monMaxEnergyTable = monMaxEnergyTable
-    state?.monPowerAvgTable = monPowerAvgTable
+    yearMinPowerTable.add(monMinPowerTable)
+    yearMaxPowerTable.add(monMaxPowerTable)
+    // yearMinEnergyTable.add(state?.monMinEnergyTable)
+    // yearMaxEnergyTable.add(state?.monMaxEnergyTable)
+    yearPowerAvgTable.add(monPowerAvgTable)
+
+    state?.yearMinPowerTable = yearMinPowerTable
+    state?.yearMaxPowerTable = yearMaxPowerTable
+    // state?.yearnMinEnergyTable = yearMinEnergyTable
+    // state?.yearMaxEnergyTable = yearMaxEnergyTable
+    state?.yearPowerAvgTable = yearPowerAvgTable
 
     state?.wkMinPowerTable = []
     state?.wkMaxPowerTable = []
     // state?.wkMinEnergyTable = []
     // state?.wkMaxEnergyTable = []
     state?.wkPowerAvgTable = []
+}
+
+def handleNewYear() {
+    state?.prevYearMinPowerTable = state?.yearMinPowerTable ?: []
+    state?.prevYearMaxPowerTable = state?.yearMaxPowerTable ?: []
+    //state?.prevYearMinEnergyTable = state?.yearMinEnergyTable
+    //state?.prevYearMaxEnergyTable = state?.yearMaxEnergyTable
+    state?.prevYearPowerAvgTable = state?.yearPowerAvgTable ?: []
+
+    state?.yearMinPowerTable = []
+    state?.yearMaxPowerTable = []
+    //state?.yearMinEnergyTable = []
+    //state?.yearMaxEnergyTable = []
+    state?.yearPowerAvgTable = []
 }
 
 def getDayElapSec() {
