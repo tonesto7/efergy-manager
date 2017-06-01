@@ -560,7 +560,7 @@ private addRemoveDevices(uninst=false) {
 			//	delete.each { deleteChildDevice(it.deviceNetworkId) }
 			//}
 		} else {
-			getChildDevices().each {
+			app.getChildDevices(true).each {
 				deleteChildDevice(it.deviceNetworkId)
 				log.info "Successfully Removed Child Device: ${it.displayName} (${it.deviceNetworkId})"
 			}
@@ -576,7 +576,7 @@ def updateDeviceData() {
 	try {
 		def api = !apiIssues() ? false : true
 		def dbg = !settings?.childDebug ? false : true
-		def devs = getAllChildDevices()
+		def devs = app.getChildDevices(true)
 		if(devs?.size() > 0) {
 			LogAction(" ", "trace", false)
 			LogAction("--------------Sending Data to Device--------------", "trace", false)
