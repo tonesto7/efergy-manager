@@ -965,8 +965,8 @@ def showChartHtml() {
             series: {
               0: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
               1: {targetAxisIndex: 0, color: '#F8971D'},
-              2: {targetAxisIndex: 1},
-              3: {targetAxisIndex: 1},
+              2: {targetAxisIndex: 1, color: '#cbe5a9', lineWidth: 1, visibleInLegend: false},
+              3: {targetAxisIndex: 1, color: '#8CC63F'},
             },
             vAxes: {
               0: {
@@ -976,10 +976,11 @@ def showChartHtml() {
                 titleTextStyle: {color: '#F8971D'}
               },
               1: {
-                title: 'Energy Used (kWh)',
-                format: 'decimal'
-              }
-
+                  title: 'Energy Consumed (kWh)',
+                  format: 'decimal',
+                  textStyle: {color: '#8CC63F'},
+                  titleTextStyle: {color: '#8CC63F'}
+                }
             },
             legend: {
               position: 'none',
