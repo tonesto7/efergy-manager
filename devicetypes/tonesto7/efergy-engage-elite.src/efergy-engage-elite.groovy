@@ -132,13 +132,13 @@ def parse(String description) {
 // refresh command
 def refresh() {
     log.info "Refresh command received..."
-    parent.refresh()
+    parent?.refresh()
 }
 
 // Poll command
 def poll() {
     log.info "Poll command received..."
-    parent.refresh()
+    parent?.refresh()
 }
 
 void generateEvent(Map eventData) {
@@ -171,7 +171,7 @@ def clearHistory() {
     state?.powerTableYesterday = null
     state?.energyTable = null
     state?.energyTableYesterday = null
-    state.lastRecordDt = null
+    state?.lastRecordDt = null
 }
 
 private handleData(readingData, usageData) {
@@ -261,13 +261,13 @@ private handleData(readingData, usageData) {
                 handleNewWeek()
             }
         }
-        if (!state?.currentMonth || (currentMonth.toInteger() != state.currentMonth.toInteger() && currentHour < 24)) {
+        if (!state?.currentMonth || (currentMonth.toInteger() != state?.currentMonth.toInteger() && currentHour < 24)) {
             log.debug "currentMonth ($currentMonth) is != to State (${state?.currentMonth})"
             handleNewMonth()
             state.currentMonth = currentMonth
         }
 
-        if (!state?.currentYear || (currentYear.toInteger() != state.currentYear.toInteger() && currentHour < 24)) {
+        if (!state?.currentYear || (currentYear.toInteger() != state?.currentYear.toInteger() && currentHour < 24)) {
             log.debug "currentYear ($currentYear) is != to State (${state?.currentYear})"
             handleNewYear()
             state.currentYear = currentYear
