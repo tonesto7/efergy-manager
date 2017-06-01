@@ -198,9 +198,7 @@ private handleData(readingData, usageData) {
         // log.debug("currentMonth: $currentMonth | (state): ${state?.currentMonth}")
         // log.debug("currentYear: $currentYear | (state): ${state?.currentYear}")
 
-        log.debug("currentPower: ${currentPower}W")
-        log.debug("currentEnergy: ${currentEnergy}kWh")
-
+        log.info "currentPower: (${currentPower}W) | currentEnergy: (${currentEnergy}kWh)"
         state.lastPower = currentPower
         logWriter("lastPower: ${state?.lastPower}")
         def previousPower = state?.lastPower ?: currentPower
