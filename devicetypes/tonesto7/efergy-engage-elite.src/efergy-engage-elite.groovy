@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.1.3"}
-def versionDate() {"6-1-2017"}
+def devTypeVer() {"3.1.4"}
+def versionDate() {"6-2-2017"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -109,7 +109,7 @@ metadata {
         valueTile("devVer", "device.devTypeVer", width: 4, height: 1, decoration: "flat", wordWrap: true) {
             state "default", label: 'Device Type Version:\nv${currentValue}'
         }
-        htmlTile(name:"graphHTML", action: "getGraphHTML", width: 6, height: 12, whitelist: ["www.gstatic.com", "raw.githubusercontent.com", "cdn.rawgit.com"])
+        htmlTile(name:"graphHTML", action: "getGraphHTML", width: 6, height: 18, whitelist: ["www.gstatic.com", "raw.githubusercontent.com", "cdn.rawgit.com"])
 
         main (["powerMulti"])
         details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate_str", "readingUpdated_str", "pwrMin", "pwrAvg", "pwrMax", "graphHTML", "refresh"])
@@ -117,7 +117,7 @@ metadata {
 }
 
 preferences {
-
+    input "resetHistoryData", "bool", title: "Reset History Data", description: "", displayDuringSetup: false
 }
 
 mappings {
@@ -127,6 +127,26 @@ mappings {
 // parse events into attributes
 def parse(String description) {
     logWriter("Parsing '${description}'")
+}
+
+void checkStateClear() {
+	//Logger("checkStateClear...")
+	def before = getStateSizePerc()
+    log.debug "checkStateClear: ${state.resetHistoryData} | state size: ${before}"
+	if((state?.resetHistoryData == null || state?.resetHistoryData == false)  && settings?.resetHistoryData) {
+		log.debug("checkStateClear...Clearing HISTORY")
+        def data = getState().findAll() { it.key && it?.key != "resetHistoryData" }
+		data?.each { item ->
+			state.remove(item?.key.toString())
+		}
+		state.resetHistoryData = true
+		log.debug("Device State Data: Before: $before | After: ${getStateSizePerc()}")
+	} else if(state?.resetHistoryData == true && !settings?.resetHistoryData) {
+		log.debug("checkStateClear...resetting HISTORY toggle")
+		state.resetHistoryData = false
+        //device.updateSetting("resetHistoryData", "false")
+	}
+	//LogAction("Device State Data: ${getState()}")
 }
 
 // refresh command
@@ -144,6 +164,7 @@ def poll() {
 void generateEvent(Map eventData) {
     //log.trace("generateEvent Parsing data ${eventData}")
     try {
+        checkStateClear()
         if(eventData) {
             //log.debug "eventData: $eventData"
             //state.timeZone = !location.timeZone ? eventData?.tz : location.timeZone <<<  This is causing stack overflow errors for the platform
@@ -164,20 +185,8 @@ void generateEvent(Map eventData) {
     }
 }
 
-def clearHistory() {
-    log.trace "Clearing History..."
-    state?.energyVal = null
-    state?.powerTable = null
-    state?.powerTableYesterday = null
-    state?.energyTable = null
-    state?.energyTableYesterday = null
-    state?.lastRecordDt = null
-}
-
 private handleData(readingData, usageData) {
     //log.trace "handleData ($localTime, $power, $energy)"
-    //clearHistory()
-    //state?.lastRecordDt = null
     try {
         def today = new Date()
         def currentHour = today.format("HH") as Integer
@@ -229,43 +238,45 @@ private handleData(readingData, usageData) {
 
         if(!state?.powerTable) {
             state?.powerTable = []
-            state?.dayMinPowerTable = []
-            state?.dayMaxPowerTable = []
-            state?.dailyPowerAvgTable = []
         }
-        if(!state?.energyTable) {
-            state?.energyTable = []
-            state?.dayMinEnergyTable = []
-            state?.dayMaxEnergyTable = []
-        }
+        if(!state?.energyTable) { state?.energyTable = [] }
         if(!state?.powerTableYesterday || !state?.energyTableYesterday) {
             state.powerTableYesterday = []
             state.energyTableYesterday = []
         }
+        def hm = state?.historyStoreMap
+    	if(hm == null) {
+    		initHistoryStore()
+    	}
 
         def powerTable = state?.powerTable
         def energyTable = state?.energyTable
+
         if (!state?.currentDay || currentDay.toInteger() != state?.currentDay.toInteger()) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
             state.powerTableYesterday = powerTable
             state.energyTableYesterday = energyTable
             handleNewDay(currentPower, currentEnergy)
+            state?.energyVal = null
+
+            state?.minPowerReading = curPow
+            state?.maxPowerReading = curPow
+            state?.minEnergyReading = curEner
+            state?.maxEnergyReading = curEner
             powerTable = []
             energyTable = energyTable ? [] : null
             state.currentDay = currentDay
             state.currentDayNum = currentDayNum
-            if(currentDay.toInteger() == 1) {
-                log.debug "new week"
-                handleNewWeek()
-            }
+            state.lastPower = 0
+    		updateHistoryData(today)
         }
-        if (!state?.currentMonth || (currentMonth.toInteger() != state?.currentMonth.toInteger() && currentHour < 24)) {
+        if (!state?.currentMonth || (currentMonth.toInteger() != state?.currentMonth.toInteger() && currentHour < 1)) {
             log.debug "currentMonth ($currentMonth) is != to State (${state?.currentMonth})"
             handleNewMonth()
             state.currentMonth = currentMonth
         }
 
-        if (!state?.currentYear || (currentYear.toInteger() != state?.currentYear.toInteger() && currentHour < 24)) {
+        if (!state?.currentYear || (currentYear.toInteger() != state?.currentYear.toInteger() && currentHour < 1)) {
             log.debug "currentYear ($currentYear) is != to State (${state?.currentYear})"
             handleNewYear()
             state.currentYear = currentYear
@@ -275,8 +286,8 @@ private handleData(readingData, usageData) {
             def newDate = new Date()
             if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null ) {
                 collectEnergy(currentEnergy)
-                powerTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentPower, getCurrentEnergy()])
-                energyTable.add([newDate.format("H", location.timeZone),newDate.format("m", location.timeZone),currentEnergy])
+                powerTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), currentPower])
+                energyTable.add([newDate.format("H"), location.timeZone, newDate.format("m", location.timeZone), getCurrentEnergy()])
                 //log.debug "powerTable: ${powerTable}"
                 state.powerTable = powerTable
             	state.energyTable = energyTable
@@ -289,6 +300,7 @@ private handleData(readingData, usageData) {
                 }
             }
         }
+
     } catch (ex) {
         log.error "handleData Exception:", ex
     }
@@ -316,131 +328,147 @@ def getCurrentEnergy() {
 
 def getLastRecUpdSec() { return !state?.lastRecordDt ? 100000 : GetTimeDiffSeconds(state?.lastRecordDt, "getLastRecUpdSec")?.toInteger() }
 
-private handleNewDay(curPow, curEner) {
-    log.trace "handleNewDay"
-    def dayMinPowerTable = state?.dayMinPowerTable ?: []
-    def dayMaxPowerTable = state?.dayMaxPowerTable ?: []
-    def dayMinEnergyTable = state?.dayMinEnergyTable ?: []
-    def dayMaxEnergyTable = state?.dayMaxEnergyTable ?: []
+def initHistoryStore() {
+	Logger("initHistoryStore()...", "trace")
 
-    dayMinPowerTable.add(state?.minPowerReading)
-    dayMaxPowerTable.add(state?.maxPowerReading)
-    dayMinEnergyTable.add(state?.minEnergyReading)
-    dayMaxEnergyTable.add(state?.maxEnergyReading)
+	def historyStoreMap = [:]
+	def today = new Date()
+	def dayNum = today.format("u", location.timeZone) as Integer // 1 = Monday,... 7 = Sunday
+	def monthNum = today.format("MM", location.timeZone) as Integer
+	def yearNum = today.format("YYYY", location.timeZone) as Integer
 
-    state?.minPowerReading = curPow
-    state?.maxPowerReading = curPow
-    state?.minEnergyReading = curEner
-    state?.maxEnergyReading = curEner
+	//dayNum = 6   // TODO DEBUGGING
 
-    state?.dayMinPowerTable = dayMinPowerTable
-    state?.dayMaxPowerTable = dayMaxPowerTable
-    state?.dayMinEnergyTable = dayMinEnergyTable
-    state?.dayMaxEnergyTable = dayMaxEnergyTable
-    state?.dayMinPowerTable = []
-    state?.dayMaxPowerTable = []
-    state?.dayMinEnergyTable = []
-    state?.dayMaxEnergyTable = []
-    state?.dayPowerAvgTable = []
+	historyStoreMap = [
+		currentDay: dayNum,
+		currentMonth: monthNum,
+		currentYear: yearNum,
+		Power_DayWeekago_usage: 0L,
+        Power_DayWeekago_avgusage: 0L,
+		Power_MonthYearago_usage: 0L,
+        Power_MonthYearago_avgusage: 0L,
+		Power_thisYear_usage: 0L,
+        Power_thisYear_avgusage: 0L,
+		Power_lastYear_usage: 0L,
+        Power_lastYear_avgusage: 0L,
+		Energy_DayWeekago_usage: 0L,
+		Energy_MonthYearago_usage: 0L,
+		Energy_thisYear_usage: 0L,
+		Energy_lastYear_usage: 0L,
+	]
 
-    def dailyPowerAvgTable = state?.dailyPowerAvgTable
-    def dPwrAvg = getDayPowerAvg()
-    if(dPwrAvg != null) {
-        dailyPowerAvgTable.add(dPwrAvg)
-    }
-    state?.dailyPowerAvgTable = dailyPowerAvgTable
+	for(int i = 1; i <= 7; i++) {
+		historyStoreMap << ["Power_Day${i}_usage": 0L, "Power_Day${i}_avgusage": 0L]
+		historyStoreMap << ["Energy_Day${i}_usage": 0L]
+	}
 
-    state.lastPower = 0
+	for(int i = 1; i <= 12; i++) {
+		historyStoreMap << ["Power_Month${i}_usage": 0L]
+		historyStoreMap << ["Energy_Month${i}_usage": 0L]
+	}
+
+	//log.debug "historyStoreMap: $historyStoreMap"
+	state.historyStoreMap = historyStoreMap
 }
 
-def handleNewWeek() {
-    def wkMinPowerTable = state?.wkMinPowerTable ?: []
-    def wkMaxPowerTable = state?.wkMaxPowerTable ?: []
-    def wkMinEnergyTable = state?.wkMinEnergyTable ?: []
-    def wkMaxEnergyTable = state?.wkMaxEnergyTable ?: []
-    def wkPowerAvgTable = state?.wkPowerAvgTable ?: []
+def updateHistoryData(today) {
+    Logger("updateOperatingHistory(${today})...", "trace")
 
-    wkMinPowerTable.add(state?.dayMinPowerTable)
-    wkMaxPowerTable.add(state?.dayMaxPowerTable)
-    wkMinEnergyTable.add(state?.dayMinEnergyTable)
-    wkMaxEnergyTable.add(state?.dayMaxEnergyTable)
-    wlPowerAvgTable.add(state?.dayPowerAvgTable)
+	def dayChange = false
+	def monthChange = false
+	def yearChange = false
 
-    state?.wkMinPowerTable = wkMinPowerTable
-    state?.wkMaxPowerTable = wkMaxPowerTable
-    state?.wkMaxEnergyTable = wkMaxEnergyTable
-    state?.wkMinEnergyTable = wkMinEnergyTable
-    state?.wkPowerAvgTable = wkPowerAvgTable
+	def hm = state?.historyStoreMap
+	if(hm == null) {
+		log.error "hm is null"
+		return
+	}
+	def dayNum = today.format("u", location.timeZone).toInteger() // 1 = Monday,... 7 = Sunday
+	def monthNum = today.format("MM", location.timeZone).toInteger()
+	def yearNum = today.format("YYYY", location.timeZone).toInteger()
 
-    def monMinPowerTable = state?.monMinPowerTable ?: []
-    def monMaxPowerTable = state?.monMaxPowerTable ?: []
-    def monMinEnergyTable = state?.monMinEnergyTable ?: []
-    def monMaxEnergyTable = state?.monMaxEnergyTable ?: []
-    def monPowerAvgTable = state?.monPowerAvgTable ?: []
+	if(hm?.currentDay == null || hm?.currentDay < 1 || hm?.currentDay > 7) {
+		Logger("hm.currentDay is invalid (${hm?.currentDay})", "error")
+		return
+	}
 
-    monMinPowerTable.add(wkMinPowerTable)
-    monMaxPowerTable.add(wkMaxPowerTable)
-    monMinEnergyTable.add(wkMinEnergyTable)
-    monMaxEnergyTable.add(wkMaxEnergyTable)
-    monPowerAvgTable.add(wkPowerAvgTable)
+	if(dayNum == null || dayNum < 1 || dayNum > 7) {
+		Logger("dayNum is invalid (${dayNum})", "error")
+		return
+	}
 
-    state?.monMinPowerTable = monMinPowerTable
-    state?.monMaxPowerTable = monMaxPowerTable
-    state?.monMinEnergyTable = monMinEnergyTable
-    state?.monMaxEnergyTable = monMaxEnergyTable
-    state?.monPowerAvgTable = monPowerAvgTable
+	if(monthNum == null || monthNum < 1 || monthNum > 12) {
+		Logger("monthNum is invalid (${monthNum})", "error")
+		return
+	}
 
-    state?.dayMinPowerTable = []
-    state?.dayMaxPowerTable = []
-    state?.dayMinEnergyTable = []
-    state?.dayMaxEnergyTable = []
-    state?.dayPowerAvgTable = []
-}
+	Logger("dayNum: ${dayNum} currentDay ${hm.currentDay} | monthNum: ${monthNum} currentMonth ${hm.currentMonth}  | yearNum: ${yearNum} currentYear: ${hm.currentYear}")
 
-def handleNewMonth() {
-    def monMinPowerTable = state?.monMinPowerTable ?: []
-    def monMaxPowerTable = state?.monMaxPowerTable ?: []
-    def monMinEnergyTable = state?.monMinEnergyTable ?: []
-    def monMaxEnergyTable = state?.monMaxEnergyTable ?: []
-    def monPowerAvgTable = state?.monPowerAvgTable ?: []
+	if(dayNum != hm.currentDay) {
+		dayChange = true
+	}
+	if(monthNum != hm.currentMonth) {
+		monthChange = true
+	}
+	if(yearNum != hm.currentYear) {
+		yearChange = true
+	}
 
-    def yearMinPowerTable = state?.yearMinPowerTable ?: []
-    def yearMaxPowerTable = state?.yearMaxPowerTable ?: []
-    def yearMinEnergyTable = state?.yearMinEnergyTable ?: []
-    def yearMaxEnergyTable = state?.yearMaxEnergyTable ?: []
-    def yearPowerAvgTable = state?.yearPowerAvgTable ?: []
+	if(dayChange) {
+		def power_usage = getSumUsage(state.powerTableYesterday).toInteger()
+        def power_avgusage = getDayPowerAvg()
+        def energy_usage = getSumUsage(energyTableYesterday).toInteger()
 
-    yearMinPowerTable.add(monMinPowerTable)
-    yearMaxPowerTable.add(monMaxPowerTable)
-    yearMinEnergyTable.add(monMinEnergyTable)
-    yearMaxEnergyTable.add(monMaxEnergyTable)
-    yearPowerAvgTable.add(monPowerAvgTable)
+		log.info "power_usage: ${power_usage} | energy_usage: ${energy_usage}"
 
-    state?.yearMinPowerTable = yearMinPowerTable
-    state?.yearMaxPowerTable = yearMaxPowerTable
-    state?.yearnMinEnergyTable = yearMinEnergyTable
-    state?.yearMaxEnergyTable = yearMaxEnergyTable
-    state?.yearPowerAvgTable = yearPowerAvgTable
+		hm."Power_Day${hm.currentDay}_usage" = power_usage
+        hm."Power_Day${hm.currentDay}_avgusage" = power_avgusage
+		hm."Energy_Day${hm.currentDay}_usage" = energy_usage
 
-    state?.wkMinPowerTable = []
-    state?.wkMaxPowerTable = []
-    state?.wkMinEnergyTable = []
-    state?.wkMaxEnergyTable = []
-    state?.wkPowerAvgTable = []
-}
+		hm.currentDay = dayNum
+		hm.Power_DayWeekago_usage = hm."Power_Day${hm.currentDay}_usage"
+        hm.Power_DayWeekago_avgusage = hm."Power_Day${hm.currentDay}_avgusage"
+		hm.Energy_DayWeekago_usage = hm."Energy_Day${hm.currentDay}_usage"
+		hm."Power_Day${hm.currentDay}_usage" = 0L
+        hm."Power_Day${hm.currentDay}_avgusage" = 0L
+		hm."Energy_Day${hm.currentDay}_usage" = 0L
 
-def handleNewYear() {
-    state?.prevYearMinPowerTable = state?.yearMinPowerTable ?: []
-    state?.prevYearMaxPowerTable = state?.yearMaxPowerTable ?: []
-    state?.prevYearMinEnergyTable = state?.yearMinEnergyTable ?: []
-    state?.prevYearMaxEnergyTable = state?.yearMaxEnergyTable ?: []
-    state?.prevYearPowerAvgTable = state?.yearPowerAvgTable ?: []
+		def t1 = hm["Power_Month${hm.currentMonth}_usage"]?.toInteger() ?: 0L
+        hm."Power_Month${hm.currentMonth}_usage" = t1 + power_usage
+        t1 = hm["Power_Month${hm.currentMonth}_avgusage"]?.toInteger() ?: 0L
+        hm."Power_Month${hm.currentMonth}_avgusage" = t1 + power_avgusage
+		t1 = hm["Energy_Month${hm.currentMonth}_usage"]?.toInteger() ?: 0L
+		hm."Energy_Month${hm.currentMonth}_usage" = t1 + energy_usage
 
-    state?.yearMinPowerTable = []
-    state?.yearMaxPowerTable = []
-    state?.yearMinEnergyTable = []
-    state?.yearMaxEnergyTable = []
-    state?.yearPowerAvgTable = []
+		if(monthChange) {
+			hm.currentMonth = monthNum
+			hm.Power_MonthYearago_usage = hm."Power_Month${hm.currentMonth}_usage"
+            hm.Power_MonthYearago_avgusage = hm."Power_Month${hm.currentMonth}_avgusage"
+			hm.Energy_MonthYearago_usage = hm."Energy_Month${hm.currentMonth}_usage"
+			hm."Power_Month${hm.currentMonth}_usage" = 0L
+            hm."Power_Month${hm.currentMonth}_avgusage" = 0L
+			hm."Energy_Month${hm.currentMonth}_usage" = 0L
+		}
+
+		t1 = hm[Power_thisYear_usage]?.toInteger() ?: 0L
+		hm.Power_thisYear_usage = t1 + power_usage
+        t1 = hm[Power_thisYear_avgusage]?.toInteger() ?: 0L
+		hm.Power_thisYear_avgusage = t1 + power_avgusage
+		t1 = hm[Energy_thisYear_usage]?.toInteger() ?: 0L
+		hm.Energy_thisYear_usage = t1 + energy_usage
+
+		if(yearChange) {
+			hm.currentYear = yearNum
+			hm.Power_lastYear_usage = hm.Power_thisYear_usage
+            hm.Power_lastYear_avgusage = hm.Power_thisYear_avgusage
+			hm.Energy_lastYear_usage = hm.Energy_thisYear_usage
+
+			hm.Power_thisYear_usage = 0L
+            hm.Power_thisYear_avgusage = 0L
+			hm.Energy_thisYear_usage = 0L
+		}
+		state.historyStoreMap = hm
+	}
 }
 
 def getDayElapSec() {
@@ -694,6 +722,12 @@ def getDtNow() {
 	return formatDt(now)
 }
 
+def getTzOffSet() {
+	def val = location?.timeZone?.getRawOffset()
+	val = ((val / 1000) / 60)
+	state?.tzOffsetVal = val ?: 0
+}
+
 //Log Writer that all logs are channel through *It will only output these if Debug Logging is enabled under preferences
 private def logWriter(value) {
     if (state.debug) {
@@ -734,16 +768,16 @@ String getDataString(Integer seriesIndex) {
 	def dataTable = []
 	switch (seriesIndex) {
 		case 1:
-			dataTable = state.powerTableYesterday
-			break
-		case 2:
-			dataTable = state.powerTable
-			break
-        case 3:
 			dataTable = state.energyTableYesterday
 			break
-        case 4:
+		case 2:
+            dataTable = state.powerTableYesterday
+			break
+        case 3:
 			dataTable = state.energyTable
+			break
+        case 4:
+			dataTable = state.powerTable
 			break
 	}
 	dataTable.each() {
@@ -817,9 +851,9 @@ def getCssData() {
     return cssData
 }
 
-def getChartJsData() {
+def getChartJsData(url=null) {
     def chartJsData = null
-    chartJsData = getFileB64(chartJsUrl(), "text", "javascript")
+    chartJsData = getFileB64((url ?: chartJsUrl()), "text", "javascript")
     return chartJsData
 }
 
@@ -857,6 +891,7 @@ def getGraphHTML() {
     try {
         def updateAvail = !state?.updateAvailable ? "" : """<h3 style="background: #ffa500;">Device Update Available!</h3>"""
         def chartHtml = (state?.powerTable.size() > 0 || state?.energyTable?.size() > 0) ? showChartHtml() : hideChartHtml()
+        def refreshBtnHtml = """<div class="pageFooterBtn"><button type="button" class="btn btn-info pageFooterBtn" onclick="reloadPage()"><span>&#10227;</span> Refresh</button></div>"""
         def html = """
         <!DOCTYPE html>
         <html>
@@ -869,6 +904,13 @@ def getGraphHTML() {
                 <meta name="viewport" content="width = device-width, user-scalable=no, initial-scale=1.0">
                 <link rel="stylesheet prefetch" href="${getCssData()}"/>
                 <script type="text/javascript" src="${getChartJsData()}"></script>
+                <style>
+                    .pageFooterBtn {
+                        padding: 10px;
+                        horizontal-align: center;
+                        text-align: center;
+                    }
+                </style>
             </head>
             <body>
                 ${updateAvail}
@@ -919,6 +961,13 @@ def getGraphHTML() {
                     <td class="dateTimeText">${state?.lastUpdatedDt.toString()}</td>
                   </tr>
               </table>
+              <script>
+                function reloadPage() {
+                  var url = "https://" + window.location.host + "/api/devices/${device?.getId()}/graphHTML"
+                  window.location = url;
+                }
+              </script>
+              ${refreshBtnHtml}
             </body>
         </html>
         """
@@ -937,10 +986,10 @@ def showChartHtml() {
           function drawGraph() {
           var data = new google.visualization.DataTable();
           data.addColumn('timeofday', 'time');
-          data.addColumn('number', 'Power (Yesterday)');
-          data.addColumn('number', 'Power (Today)');
           data.addColumn('number', 'Energy (Yesterday)');
+          data.addColumn('number', 'Power (Yesterday)');
           data.addColumn('number', 'Energy (Today)');
+          data.addColumn('number', 'Power (Today)');
           data.addRows([
             ${getDataString(1)}
             ${getDataString(2)}
@@ -951,6 +1000,7 @@ def showChartHtml() {
             fontName: 'San Francisco, Roboto, Arial',
             width: '100%',
             height: '100%',
+            isStacked: 'absolute',
             animation: {
               duration: 2500,
               startup: true,
@@ -963,19 +1013,19 @@ def showChartHtml() {
               slantedTextAngle: 30
             },
             series: {
-              0: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
-              1: {targetAxisIndex: 0, color: '#F8971D'},
-              2: {targetAxisIndex: 1, color: '#cbe5a9', lineWidth: 1, visibleInLegend: false},
-              3: {targetAxisIndex: 1, color: '#8CC63F'},
+                0: {targetAxisIndex: 1, color: '#cbe5a9', lineWidth: 1, visibleInLegend: false},
+                1: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
+                2: {targetAxisIndex: 1, color: '#8CC63F'},
+                3: {targetAxisIndex: 0, color: '#F8971D'}
             },
             vAxes: {
-              0: {
-                title: 'Power Used (W)',
-                format: 'decimal',
-                textStyle: {color: '#F8971D'},
-                titleTextStyle: {color: '#F8971D'}
-              },
-              1: {
+                0: {
+                  title: 'Power Used (W)',
+                  format: 'decimal',
+                  textStyle: {color: '#F8971D'},
+                  titleTextStyle: {color: '#F8971D'}
+                },
+                1: {
                   title: 'Energy Consumed (kWh)',
                   format: 'decimal',
                   textStyle: {color: '#8CC63F'},
@@ -993,7 +1043,8 @@ def showChartHtml() {
               bottom: '15%',
               height: '100%',
               width: '100%'
-            }
+            },
+            displayAnnotations: false
           };
           var chart = new google.visualization.AreaChart(document.getElementById('chart_div'));
           chart.draw(data, options);

@@ -893,10 +893,17 @@ def getHubName(hubType) {
 }
 
 def getApiData() {
+	getTzOffSet()
 	getUsageData()
 	getTariffData()
 	getReadingData()
 	getHubData()
+}
+
+def getTzOffSet() {
+	def val = location?.timeZone?.getRawOffset()
+	val = ((val / 1000) / 60)
+	state?.tzOffsetVal = val ?: 0
 }
 
 // Get extended energy metrics
@@ -1001,7 +1008,7 @@ def getEfergyData(url, pathStr) {
 		def params = [
 			uri: url,
 			path: pathStr,
-			query: ["token": atomicState.efergyAuthToken],
+			query: ["token": atomicState.efergyAuthToken, "offset": state?.tzOffsetVal],
 			contentType: 'application/json'
 		]
 		httpGet(params) { resp ->
