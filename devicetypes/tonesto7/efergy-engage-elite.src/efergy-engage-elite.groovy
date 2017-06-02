@@ -133,18 +133,20 @@ void checkStateClear() {
 	//Logger("checkStateClear...")
 	def before = getStateSizePerc()
     log.debug "checkStateClear: ${state.resetHistoryData} | state size: ${before}"
-	if((state?.resetHistoryData == null || state?.resetHistoryData == false)  && settings?.resetHistoryData) {
-		log.debug("checkStateClear...Clearing HISTORY")
-        def data = getState().findAll() { it.key && it?.key != "resetHistoryData" }
-		data?.each { item ->
-			state.remove(item?.key.toString())
-		}
-		state.resetHistoryData = true
-		log.debug("Device State Data: Before: $before | After: ${getStateSizePerc()}")
-	} else if(state?.resetHistoryData == true && !settings?.resetHistoryData) {
+    if(state?.resetHistoryData && !resetHistoryData) {
 		log.debug("checkStateClear...resetting HISTORY toggle")
 		state.resetHistoryData = false
         //device.updateSetting("resetHistoryData", "false")
+	} else if(!state?.resetHistoryData && resetHistoryData) {
+		log.debug("checkStateClear...Clearing HISTORY")
+
+        def data = getState().findAll() { it.key && !(it?.key in ["resetHistoryData"]) }
+        log.debug "checkStateClear removing ${data?.size()} variables"
+		data?.each { item ->
+			state.remove(item?.key.toString())
+		}
+        state.resetHistoryData = true
+		log.debug("Device State Data: Before: $before | After: ${getStateSizePerc()}")
 	}
 	//LogAction("Device State Data: ${getState()}")
 }
