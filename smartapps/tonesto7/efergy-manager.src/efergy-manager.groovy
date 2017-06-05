@@ -39,7 +39,7 @@ definition(
 */
 
 def appVersion() { "3.1.1" }
-def appVerDate() { "6-1-2017" }
+def appVerDate() { "6-5-2017" }
 def appVerInfo() {
 	def str = ""
 
@@ -184,7 +184,8 @@ def prefsPage () {
 		}
 
 		section("Logging:") {
-			href "debugPrefPage", title: "Logging", description: (getAppDebugDesc() ? "${getAppDebugDesc() ?: ""}\n\nTap to modify..." : "Tap to configure..."), state: ((isAppDebug() || isChildDebug()) ? "complete" : null),
+			def dbgDesc = getAppDebugDesc()
+			href "debugPrefPage", title: "Logging", description: (dbgDesc ? "${dbgDesc ?: ""}\n\nTap to modify..." : "Tap to configure..."), state: ((isAppDebug() || isChildDebug()) ? "complete" : null),
 					image: getAppImg("log.png")
 		}
 		refresh()
@@ -375,12 +376,12 @@ def getInputToStringDesc(inpt, addSpace = null) {
 def getNotifSchedDesc() {
 	def sun = getSunriseAndSunset()
 	//def schedInverted = settings?."DmtInvert"
-	def startInput = settings?."qStartInput"
-	def startTime = settings?."qStartTime"
-	def stopInput = settings?."qStopInput"
-	def stopTime = settings?."qStopTime"
-	def dayInput = settings?."quietDays"
-	def modeInput = settings?."quietModes"
+	def startInput = settings?.qStartInput
+	def startTime = settings?.qStartTime
+	def stopInput = settings?.qStopInput
+	def stopTime = settings?.qStopTime
+	def dayInput = settings?.quietDays
+	def modeInput = settings?.quietModes
 	def notifDesc = ""
 	def getNotifTimeStartLbl = ( (startInput == "Sunrise" || startInput == "Sunset") ? ( (startInput == "Sunset") ? epochToTime(sun?.sunset.time) : epochToTime(sun?.sunrise.time) ) : (startTime ? time2Str(startTime) : "") )
 	def getNotifTimeStopLbl = ( (stopInput == "Sunrise" || stopInput == "Sunset") ? ( (stopInput == "Sunset") ? epochToTime(sun?.sunset.time) : epochToTime(sun?.sunrise.time) ) : (stopTime ? time2Str(stopTime) : "") )
@@ -399,7 +400,8 @@ def isPluralString(obj) {
 def getAppDebugDesc() {
 	def str = ""
 	str += isAppDebug() ? "App Debug: (${debugStatus()})" : ""
-	str += isChildDebug() ? "${isAppDebug() ? "\n" : ""}Device Debug: (${deviceDebugStatus()})" : ""
+	str += isChildDebug() && str != "" ? "\n" : ""
+	str += isChildDebug() ? "Device Debug: (${deviceDebugStatus()})" : ""
 	return (str != "") ? "${str}" : null
 }
 
@@ -732,7 +734,7 @@ def getLastMisPollMsgSec() { return !atomicState?.lastMisPollMsgDt ? 100000 : Ge
 def getRecipientsSize() { return !settings.recipients ? 0 : settings?.recipients.size() }
 
 def latestDevVer()    { return atomicState?.appData?.updater?.versions?.dev ?: "unknown" }
-def getOk2Notify() { return (daysOk(settings?."quietDays") && notificationTimeOk() && modesOk(settings?."quietModes")) }
+def getOk2Notify() { return (daysOk(settings?.quietDays) && notificationTimeOk() && modesOk(settings?.quietModes)) }
 def isMissedPoll() { return (getLastDevicePollSec() > atomicState?.misPollNotifyWaitVal.toInteger()) ? true : false }
 
 def notificationCheck() {
@@ -801,6 +803,32 @@ def sendMsg(msgType, msg, people = null, sms = null, push = null, brdcast = null
 	} catch (ex) {
 		log.error "sendMsg Exception:", ex
 	}
+}
+
+def notificationTimeOk() {
+//	try {
+		def strtTime = null
+		def stopTime = null
+		def now = new Date()
+		def sun = getSunriseAndSunset() // current based on geofence, previously was: def sun = getSunriseAndSunset(zipCode: zipCode)
+		if(settings?.qStartTime && settings?.qStopTime) {
+			if(settings?.qStartInput == "sunset") { strtTime = sun.sunset }
+			else if(settings?.qStartInput == "sunrise") { strtTime = sun.sunrise }
+			else if(settings?.qStartInput == "A specific time" && settings?.qStartTime) { strtTime = settings?.qStartTime }
+
+			if(settings?.qStopInput == "sunset") { stopTime = sun.sunset }
+			else if(settings?.qStopInput == "sunrise") { stopTime = sun.sunrise }
+			else if(settings?.qStopInput == "A specific time" && settings?.qStopTime) { stopTime = settings?.qStopTime }
+		} else { return true }
+		if(strtTime && stopTime) {
+			return timeOfDayIsBetween(strtTime, stopTime, new Date(), getTimeZone()) ? false : true
+		} else { return true }
+/*
+	} catch (ex) {
+		log.error "notificationTimeOk Exception:", ex
+		sendExceptionData(ex, "notificationTimeOk")
+	}
+*/
 }
 
 def getLastWebUpdSec() { return !atomicState?.lastWebUpdDt ? 100000 : GetTimeDiffSeconds(atomicState?.lastWebUpdDt, "getLastWebUpdSec").toInteger() }
@@ -1003,7 +1031,7 @@ private getHubData() {
 }
 
 def getEfergyData(url, pathStr) {
-	LogAction("getEfergyData($url, $pathStr)", "trace", false)
+	LogAction("getEfergyData(Url: $url, Path: $pathStr, OffSet: ${state?.tzOffsetVal})", "trace", false)
 	try {
 		def params = [
 			uri: url,
@@ -1147,7 +1175,7 @@ def LogAction(msg, type = "debug", showAlways = false) {
 }
 
 def Logger(msg, type) {
-	if(msg&&type) {
+	if(msg) {
 		def labelstr = ""
 		switch(type) {
 			case "debug":
@@ -1170,7 +1198,6 @@ def Logger(msg, type) {
 				break
 		}
 	}
-	else { log.error "Logger Error - type: ${type} | msg: ${msg}" }
 }
 
 def getAppImg(imgName, on = null) 	{ return "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/images/$imgName" }
