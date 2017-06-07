@@ -38,8 +38,8 @@ definition(
 	Add offline Hub handling to verify that the hub is online instead of generating errors.
 */
 
-def appVersion() { "3.1.1" }
-def appVerDate() { "6-5-2017" }
+def appVersion() { "3.2.0" }
+def appVerDate() { "6-6-2017" }
 def appVerInfo() {
 	def str = ""
 
@@ -125,7 +125,7 @@ def mainPage() {
 				href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png", true)
 			}
 			if(setupComplete) {
-				if(atomicState?.hubData && atomicState?.readingData) {
+				if(atomicState?.energyInfoData?.hubData && atomicState?.readingData) {
 					section("Efergy Hub:") {
 						href "hubInfoPage", title:"View Hub Info", description: "Tap to view more...", image: getAppImg("St_hub.png")
 						def rStr = ""
@@ -188,7 +188,7 @@ def prefsPage () {
 			href "debugPrefPage", title: "Logging", description: (dbgDesc ? "${dbgDesc ?: ""}\n\nTap to modify..." : "Tap to configure..."), state: ((isAppDebug() || isChildDebug()) ? "complete" : null),
 					image: getAppImg("log.png")
 		}
-		refresh()
+		poll()
 	}
 }
 
@@ -295,7 +295,7 @@ def setNotificationTimePage() {
 def infoPage () {
 	dynamicPage(name: "infoPage", title: "Help, Info and Instructions", install: false) {
 		section("About this App:") {
-			paragraph appInfoDesc(), image: getAppImg("nest_manager%402x.png", true)
+			paragraph appInfoDesc(), image: getAppImg("efergy_256.png", true)
 		}
 		section("Donations:") {
 			href url: textDonateLink(), style:"external", required: false, title:"Donations",
@@ -406,11 +406,11 @@ def getAppDebugDesc() {
 }
 
 def readingInfoPage () {
-	if (!atomicState?.hubData?.hubName) { refresh() }
+	if (!atomicState?.energyInfoData?.hubData?.hubName) { poll() }
 	return dynamicPage(name: "readingInfoPage", refreshTimeout:10, install: false, uninstall: false) {
 		 section ("Efergy Reading Information") {
 			def rData = atomicState?.readingData
-			def tData = atomicState?.tarrifData
+			def tData = atomicState?.energyInfoData?.tarrifData
 			if(rData) {
 				paragraph "Current Power Reading: " + rData?.powerReading + "W", state: "complete"
 				paragraph "Current Energy Reading: " + rData?.energyReading + "kWh", state: "complete"
@@ -426,17 +426,18 @@ def readingInfoPage () {
 }
 
 def hubInfoPage () {
-	if (!atomicState?.hubData) { refresh() }
+	if (!atomicState?.energyInfoData?.hubData) { poll() }
 	return dynamicPage(name: "hubInfoPage", refreshTimeout:10, install: false, uninstall: false) {
+		def hdata = atomicState?.energyInfoData?.hubData
 		 section ("Efergy Hub Information") {
-			if(atomicState?.hubData) {
-				paragraph "Hub Name: " + atomicState?.hubData?.hubName
-				paragraph "Hub ID: " + atomicState?.hubData?.hubId
-				paragraph "Hub Mac Address: " + atomicState?.hubData?.hubMacAddr
-				paragraph "Hub Status: " + atomicState?.hubData?.hubStatus
-				paragraph "Hub Data TimeStamp: " + atomicState?.hubData?.hubTsHuman
-				paragraph "Hub Type: " + atomicState?.hubData?.hubType
-				paragraph "Hub Firmware: " + atomicState?.hubData?.hubVersion
+			if(hdata) {
+				paragraph "Hub Name: " + hdata?.hubName
+				paragraph "Hub ID: " + hdata?.hubId
+				paragraph "Hub Mac Address: " + hdata?.hubMacAddr
+				paragraph "Hub Status: " + hdata?.hubStatus
+				paragraph "Hub Data TimeStamp: " + hdata?.hubTsHuman
+				paragraph "Hub Type: " + hdata?.hubType
+				paragraph "Hub Firmware: " + hdata?.hubVersion
 			} else {
 				paragraph "There is No Data to Show at the Moment..."
 			}
@@ -456,28 +457,30 @@ def updated() {
 	sendNotificationEvent("${textAppName()} - ${appVersion()} (${appVerDate()}) updated...")
 	log.info "${textAppName()} - ${appVersion()} (${appVerDate()}) updated..."
 	unsubscribe()
+	unsubscribe()
 	initialize()
 }
 
 def uninstalled() {
 	unschedule()
+	unsubscribe()
 	addRemoveDevices(true)
 }
 
 def initialize() {
-	refresh()
+	poll()
 	addRemoveDevices()
 	addSchedule()
 	evtSubscribe()
-	refresh()
+	poll()
 }
 
 def onAppTouch(event) {
-	refresh()
+	updated()
 }
 
-// refresh command
-def refresh() {
+// poll command
+def poll() {
 	getLastRefreshSec()
 	if (atomicState?.efergyAuthToken) {
 		if (atomicState?.timeSinceRfsh > 30) {
@@ -492,18 +495,18 @@ def refresh() {
 		}
 		else if (atomicState?.timeSinceRfsh > 360 || !atomicState?.timeSinceRfsh) { checkSchedule() }
 	}
-	if(!atomicState?.cleanupComplete && (cleanupVer() != atomicState?.cleanupVer)) {
-		runIn(15, "stateCleanup", [overwrite: false])
+	if(!atomicState?.cleanupComplete || cleanupVer() != atomicState?.cleanupVer) {
+		runIn(5, "stateCleanup", [overwrite: false])
 	}
 	updateWebStuff()
 	//notificationCheck() //Checks if a notification needs to be sent for a specific event
 	//getMonthStartEpoch()
 }
 
-//Create Refresh schedule to refresh device data (Triggers roughly every 30 seconds)
+//Create schedule to poll for device data (Triggers roughly every 30 seconds)
 private addSchedule() {
-	//schedule("1/1 * * * * ?", "refresh") //Runs every 30 seconds to Refresh Data
-	schedule("0 0/1 * * * ?", "refresh") //Runs every 1 minute to make sure that data is accurate
+	//schedule("1/1 * * * * ?", "poll") //Runs every 30 seconds to Refresh Data
+	schedule("0 0/1 * * * ?", "poll") //Runs every 1 minute to make sure that data is accurate
 	//runIn(27, "checkSchedule")
 	//runIn(130, "checkSchedule")
 }
@@ -513,8 +516,7 @@ private checkSchedule() {
 	getLastRefreshSec()
 	def timeSince = atomicState.timeSinceRfsh ?: null
 	if (timeSince > 360) {
-		log.warn "It has been more than 5 minutes since last refresh!!!"
-		log.debug "Scheduling Issue found... Re-initializing schedule... Data should resume refreshing in 30 seconds"
+		log.warn "Polling Issue | It's been $timeSince seconds since last refresh... Re-initializing Schedule... Polling Will Occur in 30 Seconds"
 		addSchedule()
 		return
 	}
@@ -525,25 +527,25 @@ private checkSchedule() {
 		return
 	}
 	else {
-		refresh()
+		poll()
 	}
 }
 
-//subscribes to the various location events and uses them to refresh the data if the scheduler gets stuck
+//subscribes to the various location events and uses them to poll the data if the scheduler gets stuck
 private evtSubscribe() {
 	subscribe(app, onAppTouch)
-	subscribe(location, "sunrise", refresh)
-	subscribe(location, "sunset", refresh)
-	subscribe(location, "mode", refresh)
-	subscribe(location, "sunriseTime", refresh)
-	subscribe(location, "sunsetTime", refresh)
+	subscribe(location, "sunrise", poll)
+	subscribe(location, "sunset", poll)
+	subscribe(location, "mode", poll)
+	subscribe(location, "sunriseTime", poll)
+	subscribe(location, "sunsetTime", poll)
 }
 
 //Creates the child device if it not already there
 private addRemoveDevices(uninst=false) {
 	try {
 		def devsInUse = []
-		def dni = "Efergy Engage|${atomicState?.hubData?.hubMacAddr}"
+		def dni = "Efergy Engage|${atomicState?.energyInfoData?.hubData?.hubMacAddr}"
 		def d = getChildDevice(dni)
 		if(!uninst) {
 			if(!d) {
@@ -576,22 +578,23 @@ private addRemoveDevices(uninst=false) {
 def updateDeviceData() {
 	LogAction("updateDeviceData...", "trace", false)
 	try {
+		def enerData = atomicState?.energyInfoData
+		def readData = atomicState?.readingData
 		def api = !apiIssues() ? false : true
 		def dbg = !settings?.childDebug ? false : true
 		def devs = app.getChildDevices(true)
 		if(devs?.size() > 0) {
 			LogAction(" ", "trace", false)
 			LogAction("--------------Sending Data to Device--------------", "trace", false)
-			if(atomicState?.usageData != null && atomicState?.tariffData != null && atomicState?.readingData != null && atomicState?.hubData != null) {
+			if(enerData && readData) {
 				def devData = [
-						"usageData":atomicState?.usageData,
-						"tariffData":atomicState?.tariffData,
-						"readingData":atomicState?.readingData,
-						"hubData":atomicState?.hubData,
+						"usageData":enerData?.usageData,
+						"tariffData":enerData?.tariffData,
+						"readingData":readData,
+						"hubData":enerData?.hubData,
 						"monthName":atomicState?.monthName.toString(),
 						"debug":dbg,
 						"currency":["dollar":atomicState?.currencySym.toString(), "cent":atomicState?.centSym.toString()],
-						"tz":getTimeZone(),
 						"latestVer":latestDevVer()?.ver?.toString(),
 						"apiIssues":api
 				]
@@ -600,17 +603,11 @@ def updateDeviceData() {
 					dev?.generateEvent(devData) //parse received message from parent
 				}
 			} else {
-				if(atomicState?.usageData == null) {
-					log.warn("updateDeviceData:  Missing UsageData.  Skipping Device Update...")
+				if(enerData == null) {
+					log.warn("updateDeviceData:  Missing energyInfoData.  Skipping Device Update...")
 				}
-				if(atomicState?.tariffData == null) {
-					log.warn("updateDeviceData:  Missing TariffData.  Skipping Device Update...")
-				}
-				if(atomicState?.readingData == null) {
+				if(readData == null) {
 					log.warn("updateDeviceData:  Missing ReadingData.  Skipping Device Update...")
-				}
-				if(atomicState?.hubData == null) {
-					log.warn("updateDeviceData:  Missing HubData.  Skipping Device Update...")
 				}
 			}
 		} else {
@@ -624,7 +621,7 @@ def updateDeviceData() {
 def apiIssues() {
 	def result = state?.apiIssuesList.toString().contains("true") ? true : false
 	if(result) {
-		LogAction("Nest API Issues Detected... (${getDtNow()})", "warn", true)
+		LogAction("Efergy API Issues Detected... (${getDtNow()})", "warn", true)
 	}
 	return result
 }
@@ -680,7 +677,7 @@ private getAuthToken() {
 			contentType: 'application/json'
 			]
 		httpGet(params, closure)
-		refresh()
+		poll()
 	} catch (ex) {
 		log.error "getAuthToken Exception:", ex
 	}
@@ -922,56 +919,88 @@ def getHubName(hubType) {
 
 def getApiData() {
 	getTzOffSet()
-	getUsageData()
-	getTariffData()
 	getReadingData()
-	getHubData()
+	getEnergyData()
 }
 
 def getTzOffSet() {
-	def val = location?.timeZone?.getRawOffset()
-	val = ((val / 1000) / 60)
+	def now = new Date().getTime()
+	def val = location?.timeZone?.getOffset(now)
+	//log.debug "val(before): $val"
+	val = (val/1000/60)
+	val = val > 0 ? (0 - val) : val.abs()
+	//log.debug "val: $val"
 	state?.tzOffsetVal = val ?: 0
 }
 
-// Get extended energy metrics
-private getUsageData() {
+private getEnergyData() {
 	try {
-		def usageData = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getEstCombined")
-		if(usageData && (usageData != atomicState?.lastUsageData)) {
-			atomicState?.lastUsageData = usageData
-			def data = [:]
-			atomicState?.usageData = [:]
-			data["todayUsage"] = usageData?.day_kwh?.estimate.toDouble() ?: null
-			data["todayCost"] = usageData?.day_tariff?.estimate ?: null
-			data["monthUsage"] = usageData?.month_kwh?.previousSum ?: null
-			data["monthCost"] = usageData?.month_tariff?.previousSum ?: null
-			data["monthEst"] = usageData?.month_tariff?.estimate ?: null
-			data["monthBudget"] = usageData?.month_budget ?: null
-			LogAction("UsageData: $data", "trace", false)
-			atomicState?.usageData = data
-		}
-	}
-	catch (ex) { log.error "getUsageData Exception:", ex }
-}
-
-// Get tariff energy metrics
-private getTariffData() {
-	try {
+		def data = [:]
+		atomicState?.energyInfoData = [:]
 		def tariffData = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getTariff")
-		def tData = tariffData[0]
-		if(tData && (tData != atomicState?.lastTariffData)) {
-			atomicState?.lastTariffData = tData
-			def data = [:]
-			atomicState?.tariffData = [:]
-			data["tariffUtility"] = tData?.tariff?.plan[0].utility.toString() ?: null
-			data["tariffName"] = tData?.tariff?.plan[0].name.toString() ?: null
-			data["tariffRate"] = tData?.tariff?.plan[0]?.plan[0]?.planDetail[0]?.rate ?: null
-			LogAction("TariffData: ${data}", "debug", false)
-			atomicState?.tariffData = data
+		def tdata = [:]
+		if(tariffData[0]) {
+			tdata["tariffUtility"] = tariffData?.tariff?.plan[0].utility[0] ?: null
+			tdata["tariffName"] = tariffData?.tariff?.plan[0].name[0] ?: null
+			tdata["tariffRate"] = tariffData?.tariff?.plan[0]?.plan[0]?.planDetail[0]?.rate[0] ?: null
+			LogAction("TariffData: ${tdata}", "debug", false)
+			data["tariffData"] = tdata
 		}
+		def tRate = tdata["tariffRate"].toDouble() ?: 0.0
+		if(tRate instanceof Double && tRate > 0) { tRate = (tRate/100) }
+		def todayUsage = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getEnergy", ["period":"day"])
+		def todayCost = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getForecast", ["period":"day", "dataType":"cost"])
+		def weekUsage = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getEnergy", ["period":"week"])
+		//def usageCombined = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getEstCombined")
+		def monthUsage = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getEnergy", ["period":"month"])
+		def monthCost = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getForecast", ["period":"month", "dataType":"cost"])
+		def yearUsage = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getEnergy", ["period":"year"])
+
+		def udata = [:]
+		if(todayUsage) {
+			udata["todayUsage"] = todayUsage?.sum ?: 0L
+			udata["todayCost"] = todayCost?.day_tariff?.estimate ?: 0L
+		}
+		if(weekUsage) {
+			udata["weekUsage"] = weekUsage?.sum ?: 0L
+			udata["weekCost"] = tRate > 0 ? (calcEnergyCost(weekUsage?.sum, tRate) ?: null) : null
+		}
+
+		if(monthUsage || monthCost) {
+			udata["monthUsage"] = monthUsage?.sum ?: OL
+			udata["monthEst"] = monthCost?.month_tariff?.estimate ?: 0L
+			udata["monthCost"] = monthCost?.month_tariff?.previousSum ?: 0L
+			udata["monthBudget"] = monthCost?.month_budget ?: 0L
+		}
+
+		if(yearUsage) {
+			udata["yearUsage"] = yearUsage?.sum ?: 0L
+			udata["yearCost"] = tRate > 0 ? (calcEnergyCost(yearUsage?.sum, tRate) ?: null) : null
+		}
+		data["usageData"] = udata
+		LogAction("UsageData: $udata", "trace", false)
+
+		// Hub Data
+		def hubData = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getStatus")
+		if(hubData) {
+			def hdata = [:]
+			hdata["hubId"] = hubData?.hid?.toString() ?: null
+			hdata["hubMacAddr"] = hubData?.listOfMacs?.mac[0]?.toString() ?: null
+			hdata["hubStatus"] = hubData?.listOfMacs?.status[0]?.toString() ?: null
+			hdata["hubTs"] = hubData?.listOfMacs?.ts[0]?.toLong() ?: null
+			hdata["hubTsDelta"] = hubData?.listOfMacs?.tsDelta[0] ?: null
+			hdata["hubTsHuman"] = parseDt("E MMM dd HH:mm:ss yyyy", hubData?.listOfMacs?.tsHuman[0]?.toString(), false) ?: null
+			hdata["hubTsLocal"] = parseDt("E MMM dd HH:mm:ss yyyy", hubData?.listOfMacs?.tsHuman[0]?.toString()) ?: null
+			hdata["hubType"] = hubData?.listOfMacs?.type[0]?.toString() ?: null
+			hdata["hubVersion"] = hubData?.listOfMacs?.version[0]?.toString() ?: null
+			hdata["hubName"] = getHubName(hubData?.listOfMacs?.type[0].toString()) ?: null
+			LogAction("HubData: $hdata", "trace", false)
+			data["hubData"] = hdata
+		}
+		LogAction("getEnergyData: $data", "trace", false)
+		atomicState?.energyInfoData = data
 	}
-	catch (ex) { log.error "getTariffData Exception:", ex }
+	catch (ex) { log.error "getEnergyData Exception:", ex }
 }
 
 private getReadingData() {
@@ -1006,37 +1035,25 @@ private getReadingData() {
 	catch (ex) { log.error "getReadingData Exception:", ex }
 }
 
-// Returns Hub Device Status Info
-private getHubData() {
-	try {
-		def hubData = getEfergyData("https://engage.efergy.com", "/mobile_proxy/getStatus")
-		if(hubData && (hubData != atomicState?.lastHubData)) {
-			atomicState?.lastHubData = hubData
-			def data = [:]
-			atomicState?.hubData = [:]
-			data["hubId"] = hubData?.hid?.toString() ?: null
-			data["hubMacAddr"] = hubData?.listOfMacs?.mac[0]?.toString() ?: null
-			data["hubStatus"] = hubData?.listOfMacs?.status[0]?.toString() ?: null
-			data["hubTs"] = hubData?.listOfMacs?.ts[0]?.toLong() ?: null
-			data["hubTsDelta"] = hubData?.listOfMacs?.tsDelta[0] ?: null
-			data["hubTsHuman"] = parseDt("E MMM dd HH:mm:ss yyyy", hubData?.listOfMacs?.tsHuman[0]?.toString(), false) ?: null
-			data["hubTsLocal"] = parseDt("E MMM dd HH:mm:ss yyyy", hubData?.listOfMacs?.tsHuman[0]?.toString()) ?: null
-			data["hubType"] = hubData?.listOfMacs?.type[0]?.toString() ?: null
-			data["hubVersion"] = hubData?.listOfMacs?.version[0]?.toString() ?: null
-			data["hubName"] = getHubName(hubData?.listOfMacs?.type[0].toString()) ?: null
-			LogAction("HubData: $data", "trace", false)
-			atomicState?.hubData = data
-		}
-	} catch (ex) { log.error "getHubData Exception:", ex }
+def calcEnergyCost(usage, rate) {
+	def val = 0.0
+	if(usage && rate) {
+		val = (usage.toDouble() * rate).round(2)
+	}
+	return val
 }
 
-def getEfergyData(url, pathStr) {
-	LogAction("getEfergyData(Url: $url, Path: $pathStr, OffSet: ${state?.tzOffsetVal})", "trace", false)
+def getEfergyData(url, pathStr, extQuery=null) {
+	LogAction("getEfergyData(Url: $url, Path: $pathStr, extQuery: $extQuery)", "trace", false)
 	try {
+		def q = ["token": atomicState.efergyAuthToken, "offset": state?.tzOffsetVal]
+		if(extQuery && extQuery?.size()) {
+			extQuery?.each { q << [it] }
+		}
 		def params = [
 			uri: url,
 			path: pathStr,
-			query: ["token": atomicState.efergyAuthToken, "offset": state?.tzOffsetVal],
+			query: q,
 			contentType: 'application/json'
 		]
 		httpGet(params) { resp ->
@@ -1076,8 +1093,9 @@ def parseDt(pFormat, dt, tzFmt=true) {
 }
 
 def getLastRefreshSec() {
-	if(atomicState?.hubData?.hubTsHuman) {
-		atomicState.timeSinceRfsh = GetTimeDiffSeconds(atomicState?.hubData?.hubTsHuman, "getLastRefreshSec")
+	def ts = atomicState?.energyInfoData?.hubData?.hubTsHuman
+	if(ts) {
+		atomicState.timeSinceRfsh = GetTimeDiffSeconds(ts, "getLastRefreshSec")
 		LogAction("TimeSinceRefresh: ${atomicState.timeSinceRfsh} seconds", "info", false)
 	}
 	runIn(130, "getLastRefreshSec")
@@ -1137,30 +1155,24 @@ def notifValEnum(allowCust = true) {
 	return allowCust ? valsC : vals
 }
 
-def cleanupVer() { return 1 }
+def cleanupVer() { return 2 }
 def stateCleanup() {
-	state.remove("cidType")
-	state.remove("cidUnit")
-	state.remove("energyReading")
-	state.remove("hubId")
-	state.remove("hubMacAddr")
-	state.remove("hubName")
-	state.remove("hubStatus")
-	state.remove("hubTsHuman")
-	state.remove("hubType")
-	state.remove("hubVersion")
-	state.remove("monthBudget")
-	state.remove("monthCost")
-	state.remove("monthEst")
-	state.remove("monthUsage")
-	state.remove("readingDt")
-	state.remove("readingUpdated")
-	state.remove("tariffRate")
-	state.remove("todayCost")
-	state.remove("todayUsage")
-
-	atomicState?.cleanupComplete = true
-	atomicState?.cleanupVer = cleanupVer()
+	def items = [
+		"cidType","cidUnit","energyReading","hubId","hubMacAddr","hubName","hubStatus","hubTsHuman","hubType","hubVersion","monthBudget",
+		"monthCost","monthEst","monthUsage","readingDt","readingUpdated","tariffRate","todayCost","todayUsage", "hubData","lastHubData",
+		"lastUsageData", "usageData", "lastTariffData", "tarrifData"
+	]
+	try {
+		getState().each { item ->
+			if(item?.key in items) {
+				state.remove(item.key.toString())
+			}
+		}
+		atomicState?.cleanupVer = cleanupVer()
+		atomicState?.cleanupComplete = true
+	} catch (ex) {
+		atomicState?.cleanupComplete = false
+	}
 }
 
 def LogTrace(msg) {

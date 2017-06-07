@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.1.4"}
-def versionDate() {"6-5-2017"}
+def devTypeVer() {"3.2.0"}
+def versionDate() {"6-6-2017"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -29,6 +29,15 @@ metadata {
         capability "Actuator"
         capability "Sensor"
 
+        attribute "todayUsage", "string"
+        attribute "todayCost", "string"
+        attribute "weekUsage", "string"
+        attribute "weekCost", "string"
+        attribute "monthUsage", "string"
+        attribute "monthCost", "string"
+        attribute "monthEst", "string"
+        attribute "yearUsage", "string"
+        attribute "yearCost", "string"
         attribute "maxPowerReading", "string"
         attribute "minPowerReading", "string"
         attribute "maxEnergyReading", "string"
@@ -170,7 +179,6 @@ void generateEvent(Map eventData) {
         checkStateClear()
         if(eventData) {
             //log.debug "eventData: $eventData"
-            //state.timeZone = !location.timeZone ? eventData?.tz : location.timeZone <<<  This is causing stack overflow errors for the platform
             state?.monthName = eventData?.monthName
             state?.currency = eventData?.currency
             debugOnEvent(eventData?.debug ? true : false)
@@ -192,17 +200,17 @@ private handleData(readingData, usageData) {
     //log.trace "handleData ($localTime, $power, $energy)"
     try {
         def today = new Date()
-        def currentHour = today.format("HH", location?.timeZone) as Integer
+        def currentHour = today.format("HH", location?.timeZone).toInteger()
         def currentDay = today.format("dd", location?.timeZone) //1...31
-        def currentDayNum = today.format("u", location?.timeZone) as Integer // 1 = Monday,... 7 = Sunday
+        def currentDayNum = today.format("u", location?.timeZone).toInteger() // 1 = Monday,... 7 = Sunday
         def currentMonth = today.format("MM", location?.timeZone)
-        def currentYear = today.format("YYYY", location?.timeZone) as Integer
-        if(state?.currentDay == null) { state?.currentDay = currentDay }
-        if(state?.currentDayNum == null) { state?.currentDayNum = currentDayNum }
-        if(state?.currentYear == null) { state?.currentYear = currentYear }
-        if(state?.currentMonth == null) { state?.currentMonth = currentMonth }
-        def currentEnergy = readingData?.energyReading
-        def currentPower = readingData?.powerReading
+        def currentYear = today.format("YYYY", location?.timeZone).toInteger()
+        if(!state?.currentDay) { state?.currentDay = currentDay }
+        if(!state?.currentDayNum) { state?.currentDayNum = currentDayNum }
+        if(!state?.currentYear) { state?.currentYear = currentYear }
+        if(!state?.currentMonth) { state?.currentMonth = currentMonth }
+        def currentEnergy = usageData?.todayUsage
+        def currentPower = readingData?.powerReading ?: 0L
 
         // log.debug("currentHour: $currentHour | (state): ${state?.currentHour}")
         // log.debug("currentDay: $currentDay | (state): ${state?.currentDay}")
@@ -210,77 +218,72 @@ private handleData(readingData, usageData) {
         // log.debug("currentMonth: $currentMonth | (state): ${state?.currentMonth}")
         // log.debug("currentYear: $currentYear | (state): ${state?.currentYear}")
 
-        log.info "currentPower: (${currentPower}W) | currentEnergy: (${currentEnergy}kWh)"
-        state.lastPower = currentPower
-        logWriter("lastPower: ${state?.lastPower}")
         def previousPower = state?.lastPower ?: currentPower
-        logWriter("previousPower: $previousPower")
         def powerChange = (currentPower.toInteger() - previousPower.toInteger())
-        logWriter("powerChange: $powerChange")
+        //log.debug("powerChange: ${powerChange > 0 ? "+${powerChange}" : powerChange} | currentPower: $currentPower | previousPower: $previousPower")
+        log.info "currentPower: (${currentPower}W | ${powerChange > 0 ? "+${powerChange}" : powerChange}W) | currentEnergy: (${currentEnergy}kWh)"
+        state.lastPower = currentPower
 
-        if (!state.maxPowerReading || state.maxPowerReading <= currentPower) {
+        if (!state?.maxPowerReading || state?.maxPowerReading < currentPower) {
             state.maxPowerReading = currentPower
-            sendEvent(name: "maxPowerReading", value: currentPower, unit: "W", description: "Highest Power Reading is $currentPower W", display: false, displayed: false)
-            logWriter("maxPowerReading: ${state?.maxPowerReading}W")
+            sendEvent(name: "maxPowerReading", value: currentPower.toString(), unit: "W", description: "Highest Power Reading is ${currentPower}W", display: false, displayed: false)
         }
-        if (!state.minPowerReading || state?.minPowerReading >= currentPower) {
+        else if (!state?.minPowerReading || state?.minPowerReading > currentPower) {
             state.minPowerReading = currentPower
-            sendEvent(name: "minPowerReading", value: currentPower, unit: "W", description: "Lowest Power Reading is $currentPower W", display: false, displayed: false)
-            logWriter("minPowerReading: ${state?.minPowerReading}W")
+            sendEvent(name: "minPowerReading", value: currentPower, unit: "W", description: "Lowest Power Reading is ${currentPower}W", display: false, displayed: false)
         }
-        if (!state.maxEnergyReading || state.maxEnergyReading <= currentEnergy) {
+
+        if (!state.maxEnergyReading || state.maxEnergyReading.toFloat() <= currentEnergy.toFloat()) {
             state.maxEnergyReading = currentEnergy
-            sendEvent(name: "maxEnergyReading", value: currentEnergy, unit: "kWh", description: "Highest Day Energy Consumption is $currentEnergy kWh", display: false, displayed: false)
-            logWriter("maxEnergyReading: ${state?.maxEnergyReading}W")
+            sendEvent(name: "maxEnergyReading", value: currentEnergy.toString(), unit: "kWh", description: "Highest Day Energy Consumption is ${currentEnergy} kWh", display: false, displayed: false)
         }
-        if (!state.minPowerReading || state.minPowerReading >= currentEnergy) {
+        else if (!state.minPowerReading || state.minPowerReading.toFloat() >= currentEnergy.toFloat()) {
             state.minPowerReading = currentEnergy
-            sendEvent(name: "minEnergyReading", value: currentEnergy, unit: "kWh", description: "Lowest Day Energy Consumption is $currentEnergy kWh", display: false, displayed: false)
-            logWriter("minEnergyReading: ${state?.minEnergyReading} kWh")
+            sendEvent(name: "minEnergyReading", value: currentEnergy.toString(), unit: "kWh", description: "Lowest Day Energy Consumption is ${currentEnergy} kWh", display: false, displayed: false)
         }
 
         if(!state?.powerTable) { state?.powerTable = [] }
         if(!state?.energyTable) { state?.energyTable = [] }
         if(!state?.powerTableYesterday) { state.powerTableYesterday = [] }
         if(!state?.energyTableYesterday) { state.energyTableYesterday = [] }
-    	if(state?.historyStoreMap == null) { initHistoryStore() }
+    	if(!state?.historyStoreMap) { initHistoryStore() }
 
         def powerTable = state?.powerTable
         def energyTable = state?.energyTable
-
-        if (!state?.currentDay || state?.currentDay != currentDay) {
+        if(!state?.currentDay || state?.currentDay != currentDay) {
             log.debug "currentDay ($currentDay) is != to State (${state?.currentDay})"
             state.powerTableYesterday = powerTable
             state.energyTableYesterday = energyTable
-            state?.energyVal = null
-
+            updateHistoryData(today)
             state?.minPowerReading = curPow
             state?.maxPowerReading = curPow
             state?.minEnergyReading = curEner
             state?.maxEnergyReading = curEner
+
             powerTable = []
             energyTable = []
+            state?.powerTable = powerTable
+            state?.energyTable = energyTable
             state.currentDay = currentDay
             state.currentDayNum = currentDayNum
             state.lastPower = 0
-    		//updateHistoryData(today)
+
         }
         if (currentPower.toInteger() > 0 || powerTable?.size() != 0) {
             def newDate = new Date()
-            if(getLastRecUpdSec() >= 60 || state?.lastRecordDt == null ) {
-                collectEnergy(currentEnergy)
-                calculateEnergy()
+            if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null ) {
+
                 powerTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), currentPower])
-                //energyTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), getCurrentEnergy()])
+                energyTable.add([newDate.format("H", location.timeZone), newDate.format("m", location.timeZone), currentEnergy])
                 //log.debug "powerTable: ${powerTable}"
                 state.powerTable = powerTable
-            	//state.energyTable = energyTable
+            	state.energyTable = energyTable
                 state.lastRecordDt = getDtNow()
-                log.debug "powerTable: $powerTable"
+                //log.debug "powerTable: $powerTable"
                 //log.debug "energyTable: $energyTable"
                 def dPwrAvg = getDayPowerAvg()
-                if(dPwrAvg != null && isStateChange(device, "dayPowerAvg", dPwrAvg.toString())) {
-                    sendEvent(name: "dayPowerAvg", value: dPwrAvg, unit: "W", description: "Average Power Reading today was $dPwrAvg W", display: false, displayed: false)
+                if(dPwrAvg && isStateChange(device, "dayPowerAvg", dPwrAvg.toString())) {
+                    sendEvent(name: "dayPowerAvg", value: dPwrAvg, unit: "W", description: "Average Power Reading today was ${dPwrAvg}W", display: false, displayed: false)
                 }
             }
         }
@@ -290,43 +293,7 @@ private handleData(readingData, usageData) {
     }
 }
 
-def calculateEnergy() {
-    def today = new Date()
-    def currentHour = today.format("HH", location?.timeZone) as Integer
-    def energyVal = 0
-    def energyList = []
-    log.debug "currentHour: $currentHour"
-    def pwrTable = state?.powerTable
-    log.debug "pwrTable: ${pwrTable?.size()}"
-    if(pwrTable?.size()) {
-        // pwrTable?.each { item ->
-        //     log.debug "${item[0]}"
-        // }
-        def pwrVals = pwrTable.collect { it[0].toInteger() == currentHour }
-
-        log.debug "pwrVals: ${pwrVals?.size()} | $pwrVals"
-    }
-
-}
-def collectEnergy(val) {
-    if (state?.energyVal == null) {
-        state?.energyVal = val
-        return
-    }
-    def enerVal = state?.energyVal
-    //log.debug "collectEnergy: val: $val | Last: ${enerVal}"
-    def res = (val.toDouble() - enerVal.toDouble()).round(2)
-    //log.debug "res: $res | = ${(enerVal.toDouble() + res)}"
-    if(res > val) {
-        state?.energyList = (enerVal.toDouble() + res)
-    }
-}
-
-def getCurrentEnergy() {
-    return state?.energyVal ?: 0
-}
-
-def getLastRecUpdSec() { return !state?.lastRecordDt ? 100000 : GetTimeDiffSeconds(state?.lastRecordDt, "getLastRecUpdSec")?.toInteger() }
+def getLastRecUpdSec() { return state?.lastRecordDt == null ? 100000 : GetTimeDiffSeconds(state?.lastRecordDt, "getLastRecUpdSec")?.toInteger() }
 
 def initHistoryStore() {
 	Logger("initHistoryStore()...", "trace")
@@ -543,11 +510,12 @@ def updateAttributes(rData, uData, tData, hData) {
     def readTime = Date.parse("MMM d,yyyy - h:mm:ss a", rData?.readingUpdated).format("h:mm:ss a")
     def curDolSym = state?.currency?.dollar.toString()
     def curCentSym = state?.currency?.cent.toString()
-    def currentEnergy = rData?.energyReading
+    def currentEnergy = uData?.todayUsage
+    def tariffRate = (tData.tariffRate.toDouble()/100) ?: 0.0
     logWriter("--------------UPDATE READING DATA-------------")
-    logWriter("energy: " + currentEnergy)
-    logWriter("power: " + rData?.powerReading)
-    logWriter("readingUpdated: " + rData?.readingUpdated)
+    logWriter("energy: ${currentEnergy} kWh")
+    logWriter("power: ${rData?.powerReading}W")
+    logWriter("readingUpdated: ${rData?.readingUpdated}")
     logWriter("")
     //Updates Device Readings to tiles
     if(isStateChange(device, "energy", currentEnergy.toString())) {
@@ -576,9 +544,16 @@ def updateAttributes(rData, uData, tData, hData) {
     sendEvent(name: "todayUsage_str", value: "${curDolSym}${uData?.todayCost} (${uData?.todayUsage} kWH)", display: false, displayed: false)
     sendEvent(name: "monthUsage_str", value: "${state?.monthName}\'s Usage:\n${curDolSym}${uData?.monthCost} (${uData?.monthUsage} kWh)", display: false, displayed: false)
     sendEvent(name: "monthEst_str",   value: "${state?.monthName}\'s Bill (Est.):\n${curDolSym}${uData?.monthEst}", display: false, displayed: false)
-    sendEvent(name: "todayUsage", value: uData?.todayUsage.toString(), unit: curDolSym, display: false, displayed: false)
-    sendEvent(name: "monthUsage", value: uData?.monthUsage.toString(), unit: curDolSym, display: false, displayed: false)
+    sendEvent(name: "todayUsage", value: uData?.todayUsage.toString(), unit: "kWh", display: false, displayed: false)
+    sendEvent(name: "todayCost",   value: uData?.todayCost.toString(), unit: curDolSym, display: false, displayed: false)
+    sendEvent(name: "weekUsage", value: uData?.weekUsage.toString(), unit: "kWh", display: false, displayed: false)
+    sendEvent(name: "weekCost",   value: uData?.weekCost.toString(), unit: curDolSym, display: false, displayed: false)
+    sendEvent(name: "monthUsage", value: uData?.monthUsage.toString(), unit: "kWh", display: false, displayed: false)
+    sendEvent(name: "monthCost",   value: uData?.monthCost.toString(), unit: curDolSym, display: false, displayed: false)
     sendEvent(name: "monthEst",   value: uData?.monthEst.toString(), unit: curDolSym, display: false, displayed: false)
+    sendEvent(name: "yearUsage", value: uData?.yearUsage.toString(), unit: "kWh", display: false, displayed: false)
+    sendEvent(name: "yearCost",   value: uData?.yearCost.toString(), unit: curDolSym, display: false, displayed: false)
+
 
     if (uData?.monthBudget > 0) {
         budgPercent = Math.round(Math.round(uData?.monthCost?.toFloat()) / Math.round(uData?.monthBudget?.toFloat()) * 100)
@@ -593,10 +568,10 @@ def updateAttributes(rData, uData, tData, hData) {
 
     //Tariff Info
     logWriter("--------------UPDATE TARIFF DATA-------------")
-    logWriter("tariff rate: ${tData?.tariffRate}${curCentSym}")
+    logWriter("tariff rate: ${tariffRate}${curCentSym}")
     logWriter("")
-    sendEvent(name: "tariffRate", value: tData?.tariffRate, unit: curCentSym, description: "Tariff Rate is ${tData?.tariffRate}${curCentSym}/kWh", display: false, displayed: false)
-    sendEvent(name: "tariffRate_str", value: "Tariff Rate:\n${tData?.tariffRate}${curCentSym}/kWh", description: "Tariff Rate is ${tData?.tariffRate}${curCentSym}/kWh", display: false, displayed: false)
+    sendEvent(name: "tariffRate", value: tariffRate, unit: curCentSym, description: "Tariff Rate is ${tariffRate}${curCentSym}/kWh", display: false, displayed: false)
+    sendEvent(name: "tariffRate_str", value: "Tariff Rate:\n${tariffRate}${curCentSym}/kWh", description: "Tariff Rate is ${tariffRate}${curCentSym}/kWh", display: false, displayed: false)
 
     //Updates Hub INFO Tiles
     logWriter("--------------UPDATE HUB DATA-------------")
@@ -707,10 +682,10 @@ def isCodeUpdateAvailable(newVer, curVer) {
 }
 
 def getTimeZone() {
-    def tz = null
-    if (location?.timeZone) { tz = location?.timeZone }
-    if(!tz) { log.warn("getTimeZone: SmartThings TimeZone is not found on your account...") }
-    return tz
+	if (location.timeZone != null) {
+		return location.timeZone
+	} else { log.warn("getTimeZone: SmartThings TimeZone is not found on your account...") }
+	return null
 }
 
 def formatDt(dt) {
