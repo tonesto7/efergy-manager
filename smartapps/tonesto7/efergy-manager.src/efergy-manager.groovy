@@ -1136,14 +1136,6 @@ private getReadingData() {
 	catch (ex) { log.error "getReadingData Exception:", ex }
 }
 
-def calcEnergyCost(usage, rate) {
-	def val = 0.0
-	if(usage && rate) {
-		val = (usage.toDouble() * rate).round(2)
-	}
-	return val
-}
-
 def getEfergyData(url, pathStr, extQuery=null) {
 	LogAction("getEfergyData(Url: $url, Path: $pathStr, extQuery: $extQuery)", "trace", false)
 	try {
@@ -1160,8 +1152,11 @@ def getEfergyData(url, pathStr, extQuery=null) {
 		httpGet(params) { resp ->
 			if(resp.data) {
 				//log.debug "getEfergyData Response: ${resp?.data}"
-				apiIssueEvent(false)
-				return resp?.data
+				if(resp.status == 200) {
+					atomicState?.lastDevDataUpd = getDtNow()
+					apiIssueEvent(false)
+					return resp?.data
+				}
 			}
 		}
 	} catch (ex) {
