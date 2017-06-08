@@ -34,14 +34,25 @@ definition(
 	singleInstance: false,
 	oauth: true)
 
+{
+	appSetting "wattVision_api_id"
+	appSetting "wattVision_api_key"
+	appSetting "wattVision_sensor_id"
+}
 /* THINGS TO-DO..........
 	Add offline Hub handling to verify that the hub is online instead of generating errors.
 */
 
 def appVersion() { "3.2.0" }
-def appVerDate() { "6-6-2017" }
+def appVerDate() { "6-8-2017" }
 def appVerInfo() {
 	def str = ""
+	str += "V3.2.0 (June 8th, 2017):"
+	str += "\n▔▔▔▔▔▔▔▔▔▔▔"
+	str += "\n • Updated: Rebuilt data collection from Efergy"
+    str += "\n • Added: Send your energy and power data to WattVision"
+	str += "\n • Added: Lot's of Bug Fixes and Cleanups"
+	str += "\n • Added: Notifications are now available for missed polls and app/device updates"
 
 	str += "V3.1.0 (November 1st, 2016):"
 	str += "\n▔▔▔▔▔▔▔▔▔▔▔"
@@ -61,6 +72,8 @@ def appVerInfo() {
 
 	return str
 }
+
+include 'asynchttp_v1'
 
 preferences {
 	page(name: "startPage")
@@ -136,7 +149,11 @@ def mainPage() {
 								image: getAppImg("power_meter.png")
 					}
 				}
-
+				if(wattvisionOk()) {
+					section("WattVision Integration:") {
+						input("updateWattVision", "bool", title: "Send Power Data to WattVision API?", description: "")
+					}
+				}
 				section("Preferences:") {
 					def descStr = ""
 					def sz = descStr.size()
@@ -168,6 +185,10 @@ def mainPage() {
 			}
 		}
 	}
+}
+
+def wattvisionOk() {
+	return (appSettings?.wattVision_api_id && appSettings?.wattVision_api_key && appSettings?.wattVision_sensor_id) ? true : false
 }
 
 //Defines the Preference Page
@@ -485,10 +506,14 @@ def poll() {
 	if (atomicState?.efergyAuthToken) {
 		if (atomicState?.timeSinceRfsh > 30) {
 			LogAction("","info", false)
-			log.info "Refreshing Efergy Energy data from engage.efergy.com"
+			log.info "Getting Latest Energy Data from Efergy API"
 			getDayMonth()
 			getApiData()
-
+			def pwr = atomicState?.readingData?.powerReading
+			def ener = atomicState?.energyInfoData?.usageData?.todayUsage
+			if(wattvisionOk() && settings?.updateWattVision && pwr && ener) {
+				sendToWattVision(pwr, ener)
+			}
 			updateDeviceData()
 			LogAction("", "info", false)
 			runIn(27, "checkSchedule")
@@ -499,8 +524,7 @@ def poll() {
 		runIn(5, "stateCleanup", [overwrite: false])
 	}
 	updateWebStuff()
-	//notificationCheck() //Checks if a notification needs to be sent for a specific event
-	//getMonthStartEpoch()
+	notificationCheck() //Checks if a notification needs to be sent for a specific event
 }
 
 //Create schedule to poll for device data (Triggers roughly every 30 seconds)
@@ -618,6 +642,36 @@ def updateDeviceData() {
 	}
 }
 
+def sendToWattVision(watts, watthours) {
+	//{"sensor_id":"XXXXXX","api_id":"XXXXXX","api_key":"XXXXXX","watts":1003}' http://www.wattvision.com/api/v0.2/elec
+	try {
+		if(wattvisionOk() && settings?.updateWattVision && watts) {
+			def params = [
+		        uri: "http://www.wattvision.com",
+		        path: "/api/v0.2/elec",
+		        contentType: "application/json",
+				body: [
+					"sensor_id":appSettings?.wattVision_sensor_id,
+					"api_id":appSettings?.wattVision_api_id,
+					"api_key":appSettings?.wattVision_api_key,
+					"watts":watts,
+					"watthours":watthours
+				]
+		    ]
+			log.info "Sending Data to WattVision | Power: (${watts}W) | Energy: (${watthours} kWh)"
+		    asynchttp_v1.post(wattVisionResponse, params)
+		}
+	} catch (ex) {
+		log.error "sendToWattVision error: ", ex
+	}
+}
+
+def wattVisionResponse(response, data) {
+	if(response?.hasError()) {
+    	log.error "WattVision Error Response: ${response.data}"
+	}
+}
+
 def apiIssues() {
 	def result = state?.apiIssuesList.toString().contains("true") ? true : false
 	if(result) {
@@ -732,19 +786,19 @@ def getRecipientsSize() { return !settings.recipients ? 0 : settings?.recipients
 
 def latestDevVer()    { return atomicState?.appData?.updater?.versions?.dev ?: "unknown" }
 def getOk2Notify() { return (daysOk(settings?.quietDays) && notificationTimeOk() && modesOk(settings?.quietModes)) }
-def isMissedPoll() { return (getLastDevicePollSec() > atomicState?.misPollNotifyWaitVal.toInteger()) ? true : false }
+def isMissedPoll() { return (getLastMisPollMsgSec() > (atomicState?.misPollNotifyWaitVal.toInteger() ?: 3600)) ? true : false }
 
 def notificationCheck() {
 	if((settings?.recipients || settings?.usePush) && getOk2Notify()) {
 		if (sendMissedPollMsg) { missedPollNotify() }
-		if (sendAppUpdateMsg && !appDevType()) { appUpdateNotify() }
+		if (sendAppUpdateMsg) { appUpdateNotify() }
 	}
 }
 
 def missedPollNotify() {
 	if(isMissedPoll()) {
-		if(getOk2Notify() && (getLastMisPollMsgSec() > atomicState?.misPollNotifyMsgWaitVal.toInteger())) {
-			sendMsg("Warning", "${app.name} has not refreshed data in the last (${getLastDevicePollSec()}) seconds.  Please try refreshing manually.")
+		if(getOk2Notify() && (getLastMisPollMsgSec() > (atomicState?.misPollNotifyMsgWaitVal.toInteger() ?: 3600))) {
+			sendMsg("Warning", "${app.name} has not refreshed data in the last (${getLastMisPollMsgSec()}) seconds.  Please try refreshing manually.")
 			atomicState?.lastMisPollMsgDt = getDtNow()
 		}
 	}
@@ -752,7 +806,7 @@ def missedPollNotify() {
 
 def appUpdateNotify() {
 	def appUpd = isAppUpdateAvail()
-	def devUpd = isProtUpdateAvail()
+	def devUpd = isDevUpdateAvail()
 	if((appUpd || devUpd) && (getLastUpdMsgSec() > atomicState?.updNotifyWaitVal.toInteger())) {
 		def str = ""
 		str += !appUpd ? "" : "\nManager App: v${atomicState?.appData?.updater?.versions?.app?.ver?.toString()}"
@@ -823,16 +877,33 @@ def notificationTimeOk() {
 /*
 	} catch (ex) {
 		log.error "notificationTimeOk Exception:", ex
-		sendExceptionData(ex, "notificationTimeOk")
 	}
 */
+}
+
+def daysOk(days) {
+	if(days) {
+		def dayFmt = new SimpleDateFormat("EEEE")
+		if(getTimeZone()) { dayFmt.setTimeZone(getTimeZone()) }
+		return days.contains(dayFmt.format(new Date())) ? false : true
+	} else { return true }
+}
+
+def modesOk(modeEntry) {
+	def res = true
+	if(modeEntry) {
+		modeEntry?.each { m ->
+			if(m.toString() == location?.mode.toString()) { res = false }
+		}
+	}
+	return res
 }
 
 def getLastWebUpdSec() { return !atomicState?.lastWebUpdDt ? 100000 : GetTimeDiffSeconds(atomicState?.lastWebUpdDt, "getLastWebUpdSec").toInteger() }
 
 def updateWebStuff(now = false) {
 	//log.trace "updateWebStuff..."
-	if (!atomicState?.appData || (getLastWebUpdSec() > (3600*4))) {
+	if (!atomicState?.appData || (getLastWebUpdSec() > (3600*6))) {
 		if(now) {
 			getWebFileData()
 		} else {
@@ -891,6 +962,31 @@ def updateHandler() {
 			}
 		}
 	}
+}
+
+def isCodeUpdateAvailable(newVer, curVer, type) {
+	def result = false
+	def latestVer
+	if(newVer && curVer) {
+		def versions = [newVer, curVer]
+		if(newVer != curVer) {
+			latestVer = versions?.max { a, b ->
+				def verA = a?.tokenize('.')
+				def verB = b?.tokenize('.')
+				def commonIndices = Math.min(verA?.size(), verB?.size())
+				for (int i = 0; i < commonIndices; ++i) {
+					//log.debug "comparing $numA and $numB"
+					if(verA[i]?.toInteger() != verB[i]?.toInteger()) {
+						return verA[i]?.toInteger() <=> verB[i]?.toInteger()
+					}
+				}
+				verA?.size() <=> verB?.size()
+			}
+			result = (latestVer == newVer) ? true : false
+		}
+	}
+	LogTrace("type: $type | newVer: $newVer | curVer: $curVer | newestVersion: ${latestVer} | result: $result")
+	return result
 }
 
 def isAppUpdateAvail() {
@@ -1231,9 +1327,9 @@ def textModified()  { return "Updated: ${appVerDate()}" }
 def textAuthor()    { return "${appAuthor()}" }
 def textNamespace() { return "${appNamespace()}" }
 def textVerInfo()   { return "${appVerInfo()}" }
-def textDonateLink(){ return "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=2CJEVN439EAWS" }
+def textDonateLink(){ return "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=M88RC5J59BHTJ" }
 def stIdeLink()     { return "https://graph.api.smartthings.com" }
-def textCopyright() { return "Copyright© 2016 - Anthony S." }
+def textCopyright() { return "Copyright© 2017 - Anthony S." }
 def textDesc()      { return "This app will handle the connection to Efergy Servers and generate an API token and create the energy device. It will also update the data automatically for you every 30 seconds" }
 def textHelp()      { return "" }
 def textLicense() {
