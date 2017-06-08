@@ -1136,6 +1136,14 @@ private getReadingData() {
 	catch (ex) { log.error "getReadingData Exception:", ex }
 }
 
+def calcEnergyCost(usage, rate) {
+	def val = 0.0
+	if(usage && rate) {
+		val = (usage.toDouble() * rate).round(2)
+	}
+	return val
+}
+
 def getEfergyData(url, pathStr, extQuery=null) {
 	LogAction("getEfergyData(Url: $url, Path: $pathStr, extQuery: $extQuery)", "trace", false)
 	try {
