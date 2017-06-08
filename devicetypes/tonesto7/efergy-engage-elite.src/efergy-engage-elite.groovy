@@ -220,8 +220,12 @@ private handleData(readingData, usageData) {
 
         def previousPower = state?.lastPower ?: currentPower
         def powerChange = (currentPower.toInteger() - previousPower.toInteger())
-        //log.debug("powerChange: ${powerChange > 0 ? "+${powerChange}" : powerChange} | currentPower: $currentPower | previousPower: $previousPower")
-        log.info "currentPower: (${currentPower}W | ${powerChange > 0 ? "+${powerChange}" : powerChange}W) | currentEnergy: (${currentEnergy}kWh)"
+        def chgStr = ""
+        chgStr += powerChange > 0 ? "CurrentPower: (${currentPower}W [⇑${powerChange}W])" : ""
+        chgStr += powerChange < 0 ? "CurrentPower: (${currentPower}W [⇓${powerChange.abs()}W])" : ""
+        chgStr += powerChange == 0 ?"CurrentPower: (${currentPower}W [${powerChange}W])" : ""
+        log.info "$chgStr || CurrentEnergy: (${currentEnergy}kWh)"
+
         state.lastPower = currentPower
 
         if (!state?.maxPowerReading || state?.maxPowerReading < currentPower) {
