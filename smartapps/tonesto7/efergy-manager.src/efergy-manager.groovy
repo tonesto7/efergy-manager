@@ -784,9 +784,9 @@ def getLastUpdMsgSec() { return !atomicState?.lastUpdMsgDt ? 100000 : GetTimeDif
 def getLastMisPollMsgSec() { return !atomicState?.lastMisPollMsgDt ? 100000 : GetTimeDiffSeconds(atomicState?.lastMisPollMsgDt, "getLastMisPollMsgSec").toInteger() }
 def getRecipientsSize() { return !settings.recipients ? 0 : settings?.recipients.size() }
 
-def latestDevVer()    { return atomicState?.appData?.updater?.versions?.dev ?: "unknown" }
+def latestDevVer() { return atomicState?.appData?.updater?.versions?.dev ?: "unknown" }
 def getOk2Notify() { return ((settings?.recipients || settings?.usePush) && (daysOk(settings?.quietDays) && notificationTimeOk() && modesOk(settings?.quietModes))) }
-def getLastDevicePollSec() { return !atomicState?.lastDevDataUpd ? 840 : GetTimeDiffSeconds(atomicState?.lastDevDataUpd, null, "getLastDevicePollSec").toInteger() }
+def getLastDevicePollSec() { return !atomicState?.lastDevDataUpd ? 840 : GetTimeDiffSeconds(atomicState?.lastDevDataUpd, "getLastDevicePollSec").toInteger() }
 
 def notificationCheck() {
 	if(!getOk2Notify()) { return }
@@ -797,10 +797,10 @@ def notificationCheck() {
 void missPollNotify(on, wait) {
 	def missedPoll = getLastMisPollMsgSec() > wait ? true : false
 	if(!on || !wait || !missedPoll) { return }
-	if(missedPoll) {
+	if(on && missedPoll) {
 		def msg = "\nThe app has not refreshed energy data in the last (${getLastDevicePollSec()}) seconds.\nPlease try refreshing data using device refresh button."
 		sendMsg("${app.name} Polling Issue", msg)
-		LogAction(msg.toString().replaceAll("\n", " "), "error", true)
+		LogAction(msg.toString().replaceAll("\n", " "), "warn", true)
 		atomicState?.lastMisPollMsgDt = getDtNow()
 	}
 }
@@ -834,7 +834,7 @@ def sendMsg(msgType, msg, people = null, sms = null, push = null, brdcast = null
 						sendNotificationToContacts(newMsg, who)
 						atomicState?.lastMsg = newMsg
 						atomicState?.lastMsgDt = getDtNow()
-						LogAction("Push Message (${flatMsg}) Sent to Contacts ${who} at ${atomicState?.lastMsgDt}", "debug", true)
+						LogAction("Push Message Sent to Contacts ${who} | Msg: (${flatMsg}) | ${atomicState?.lastMsgDt}", "debug", true)
 					}
 				} else {
 					LogAction("ContactBook is NOT Enabled on your SmartThings Account...", "warn", true)
@@ -842,18 +842,18 @@ def sendMsg(msgType, msg, people = null, sms = null, push = null, brdcast = null
 						sendPush(newMsg)
 						atomicState?.lastMsg = newMsg
 						atomicState?.lastMsgDt = getDtNow()
-						LogAction("Push Message (${flatMsg}) Sent at ${atomicState?.lastMsgDt}", "debug", true)
+						LogAction("Push Message Sent | Msg: (${flatMsg}) | ${atomicState?.lastMsgDt}", "debug", true)
 					}
 					else if (sms) {
 						sendSms(sms, newMsg)
 						atomicState?.lastMsg = newMsg
 						atomicState?.lastMsgDt = getDtNow()
-						LogAction("SMS Message (${flatMsg}) Sent at ${atomicState?.lastMsgDt}", "debug", true)
+						LogAction("SMS Message Sent | Msg: (${flatMsg}) | ${atomicState?.lastMsgDt}", "debug", true)
 					}
 				}
 			} else {
 				sendPushMessage(newMsg)
-				LogAction("Broadcast Message (${flatMsg}) Sent at ${atomicState?.lastMsgDt}", "debug", true)
+				LogAction("Broadcast Message Sent | Msg: (${flatMsg}) | ${atomicState?.lastMsgDt}", "debug", true)
 			}
 		}
 	} catch (ex) {
