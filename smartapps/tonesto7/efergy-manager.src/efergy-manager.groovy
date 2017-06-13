@@ -44,7 +44,7 @@ definition(
 */
 
 def appVersion() { "3.2.0" }
-def appVerDate() { "6-8-2017" }
+def appVerDate() { "6-13-2017" }
 def appVerInfo() {
 	def str = ""
 	str += "V3.2.0 (June 8th, 2017):"
@@ -151,7 +151,7 @@ def mainPage() {
 				}
 				if(wattvisionOk()) {
 					section("WattVision Integration:") {
-						input("updateWattVision", "bool", title: "Send Power Data to WattVision API?", description: "")
+						input("updateWattVision", "bool", title: "Send Power Data to WattVision API?", description: "", image: getAppImg("wattvision_icon.png"))
 					}
 				}
 				section("Preferences:") {
@@ -502,18 +502,24 @@ def onAppTouch(event) {
 
 // poll command
 def poll() {
+	def sentToWV = false
 	getLastRefreshSec()
 	if (atomicState?.efergyAuthToken) {
 		if (atomicState?.timeSinceRfsh > 30) {
-			LogAction("","info", false)
-			log.info "Getting Latest Energy Data from Efergy API"
 			getDayMonth()
 			getApiData()
 			def pwr = atomicState?.readingData?.powerReading
 			def ener = atomicState?.energyInfoData?.usageData?.todayUsage
 			if(wattvisionOk() && settings?.updateWattVision && pwr && ener) {
 				sendToWattVision(pwr, ener)
+				sentToWV = true
 			}
+			LogAction("","info", true)
+			LogAction("└──────────────────────────────────","info", true)
+			if(wattvisionOk()) { LogAction("│	WattVision Updated: (${sentToWV.toString().capitalize()})","info", true) }
+			LogAction("│	Energy Reading: (${ener}kWh)","info", true)
+			LogAction("│	Power Reading: (${pwr}W)","info", true)
+			LogAction("┌─── Retrieving Energy Data from Efergy ────","info", true)
 			updateDeviceData()
 			LogAction("", "info", false)
 			runIn(27, "checkSchedule")
@@ -579,7 +585,7 @@ private addRemoveDevices(uninst=false) {
 				devsInUse += dni
 			}
 			else {
-				LogAction("Device already created", "info", true)
+				LogAction("Device (${d}) Already Exists... Skipping", "info", true)
 			}
 			//def delete
 			//delete = getChildDevices().findAll { !devsInUse?.toString()?.contains(it?.deviceNetworkId) }
@@ -658,7 +664,6 @@ def sendToWattVision(watts, watthours) {
 					"watthours":watthours
 				]
 		    ]
-			log.info "Sending Data to WattVision | Power: (${watts}W) | Energy: (${watthours} kWh)"
 		    asynchttp_v1.post(wattVisionResponse, params)
 		}
 	} catch (ex) {
@@ -795,7 +800,8 @@ def notificationCheck() {
 }
 
 void missPollNotify(on, wait) {
-	def missedPoll = getLastMisPollMsgSec() > wait ? true : false
+	if(!on || !wait || !(getLastDevicePollSec() > (atomicState?.misPollNotifyWaitVal.toInteger() ?: 900))) { return }
+	def missedPoll = (getLastMisPollMsgSec() > wait.toInteger()) ? true : true
 	if(!on || !wait || !missedPoll) { return }
 	if(on && missedPoll) {
 		def msg = "\nThe app has not refreshed energy data in the last (${getLastDevicePollSec()}) seconds.\nPlease try refreshing data using device refresh button."
