@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.2.0"}
-def versionDate() {"6-6-2017"}
+def devTypeVer() {"3.2.1"}
+def versionDate() {"9-21-2017"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -162,20 +162,20 @@ void clearAllState() {
 }
 
 // refresh command
-def refresh() {
-    log.info "Refresh command received..."
-    parent?.refresh()
+void refresh() {
+    // log.info "Refresh command received..."
+    poll()
 }
 
 // Poll command
-def poll() {
+void poll() {
     log.info "Poll command received..."
     parent?.refresh()
 }
 
 void generateEvent(Map eventData) {
     //log.trace("generateEvent Parsing data ${eventData}")
-    try {
+    // try {
         checkStateClear()
         if(eventData) {
             //log.debug "eventData: $eventData"
@@ -190,21 +190,22 @@ void generateEvent(Map eventData) {
         }
         lastUpdatedEvent()
         //return null
-    }
-    catch (ex) {
-        log.error "generateEvent Exception:", ex
-    }
+    // }
+    // catch (ex) {
+    //     log.error "generateEvent Exception:", ex
+    //     log.error "generateEvent Exception: ${ex}"
+    // }
 }
 
 private handleData(readingData, usageData) {
     //log.trace "handleData ($localTime, $power, $energy)"
     try {
         def today = new Date()
-        def currentHour = today.format("HH", location?.timeZone).toInteger()
-        def currentDay = today.format("dd", location?.timeZone) //1...31
-        def currentDayNum = today.format("u", location?.timeZone).toInteger() // 1 = Monday,... 7 = Sunday
-        def currentMonth = today.format("MM", location?.timeZone)
-        def currentYear = today.format("YYYY", location?.timeZone).toInteger()
+        def currentHour = today?.format("HH", location?.timeZone)?.toInteger()
+        def currentDay = today?.format("dd", location?.timeZone) //1...31
+        def currentDayNum = today?.format("u", location?.timeZone)?.toInteger() // 1 = Monday,... 7 = Sunday
+        def currentMonth = today?.format("MM", location?.timeZone)
+        def currentYear = today?.format("YYYY", location?.timeZone)?.toInteger()
         if(!state?.currentDay) { state?.currentDay = currentDay }
         if(!state?.currentDayNum) { state?.currentDayNum = currentDayNum }
         if(!state?.currentYear) { state?.currentYear = currentYear }
@@ -230,7 +231,7 @@ private handleData(readingData, usageData) {
 
         if (!state?.maxPowerReading || state?.maxPowerReading < currentPower) {
             state.maxPowerReading = currentPower
-            sendEvent(name: "maxPowerReading", value: currentPower.toString(), unit: "W", description: "Highest Power Reading is ${currentPower}W", display: false, displayed: false)
+            sendEvent(name: "maxPowerReading", value: "${currentPower}", unit: "W", description: "Highest Power Reading is ${currentPower}W", display: false, displayed: false)
         }
         else if (!state?.minPowerReading || state?.minPowerReading > currentPower) {
             state.minPowerReading = currentPower
@@ -271,8 +272,8 @@ private handleData(readingData, usageData) {
             state.currentDay = currentDay
             state.currentDayNum = currentDayNum
             state.lastPower = 0
-
         }
+
         if (currentPower.toInteger() > 0 || powerTable?.size() != 0) {
             def newDate = new Date()
             if(getLastRecUpdSec() >= 117 || state?.lastRecordDt == null ) {
@@ -286,7 +287,7 @@ private handleData(readingData, usageData) {
                 //log.debug "powerTable: $powerTable"
                 //log.debug "energyTable: $energyTable"
                 def dPwrAvg = getDayPowerAvg()
-                if(dPwrAvg && isStateChange(device, "dayPowerAvg", dPwrAvg.toString())) {
+                if(dPwrAvg && isStateChange(device, "dayPowerAvg", dPwrAvg?.toString())) {
                     sendEvent(name: "dayPowerAvg", value: dPwrAvg, unit: "W", description: "Average Power Reading today was ${dPwrAvg}W", display: false, displayed: false)
                 }
             }
