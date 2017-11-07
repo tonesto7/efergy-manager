@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.2.1"}
-def versionDate() {"9-21-2017"}
+def devTypeVer() {"3.2.2"}
+def versionDate() {"11-7-2017"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -161,43 +161,34 @@ void clearAllState() {
     //log.debug("Device State Data: Before: $before | After: ${getStateSizePerc()}")
 }
 
-// refresh command
 void refresh() {
-    // log.info "Refresh command received..."
     poll()
 }
 
 // Poll command
 void poll() {
     log.info "Poll command received..."
-    parent?.refresh()
+    parent?.poll()
 }
 
 void generateEvent(Map eventData) {
     //log.trace("generateEvent Parsing data ${eventData}")
-    // try {
-        checkStateClear()
-        if(eventData) {
-            //log.debug "eventData: $eventData"
-            state?.monthName = eventData?.monthName
-            state?.currency = eventData?.currency
-            debugOnEvent(eventData?.debug ? true : false)
-            deviceVerEvent(eventData?.latestVer.toString())
-            updateAttributes(eventData?.readingData, eventData?.usageData, eventData?.tariffData, eventData?.hubData)
-            handleData(eventData?.readingData, eventData?.usageData)
-            apiStatusEvent(eventData?.apiIssues)
-            lastCheckinEvent(eventData?.hubData?.hubTsHuman)
-        }
-        lastUpdatedEvent()
-        //return null
-    // }
-    // catch (ex) {
-    //     log.error "generateEvent Exception:", ex
-    //     log.error "generateEvent Exception: ${ex}"
-    // }
+    checkStateClear()
+    if(eventData) {
+        // log.debug "eventData: $eventData"
+        state?.monthName = eventData?.monthName
+        state?.currency = eventData?.currency
+        debugOnEvent(eventData?.debug ? true : false)
+        deviceVerEvent(eventData?.latestVer.toString())
+        updateAttributes(eventData?.readingData, eventData?.usageData, eventData?.tariffData, eventData?.hubData)
+        handleData(eventData?.readingData, eventData?.usageData)
+        apiStatusEvent(eventData?.apiIssues)
+        lastCheckinEvent(eventData?.hubData?.hubTsHuman)
+    }
+    lastUpdatedEvent()
 }
 
-private handleData(readingData, usageData) {
+private handleData(Map readingData, Map usageData) {
     //log.trace "handleData ($localTime, $power, $energy)"
     try {
         def today = new Date()
@@ -210,9 +201,9 @@ private handleData(readingData, usageData) {
         if(!state?.currentDayNum) { state?.currentDayNum = currentDayNum }
         if(!state?.currentYear) { state?.currentYear = currentYear }
         if(!state?.currentMonth) { state?.currentMonth = currentMonth }
-        def currentEnergy = usageData?.todayUsage
+        def currentEnergy = usageData?.todayUsage as Float
         def currentPower = readingData?.powerReading ?: 0L
-
+        // currentPower = currentPower?.toFloat() < 1.0 ? 1 : currentPower
         // log.debug("currentHour: $currentHour | (state): ${state?.currentHour}")
         // log.debug("currentDay: $currentDay | (state): ${state?.currentDay}")
         // log.debug("currentDayNum: $currentDayNum | (state): ${state?.currentDayNum}")
@@ -220,31 +211,35 @@ private handleData(readingData, usageData) {
         // log.debug("currentYear: $currentYear | (state): ${state?.currentYear}")
 
         def previousPower = state?.lastPower ?: currentPower
-        def powerChange = (currentPower.toInteger() - previousPower.toInteger())
+        def powerChange = (currentPower - previousPower)
         def chgStr = ""
         chgStr += powerChange > 0 ? "CurrentPower: (${currentPower}W [⇑${powerChange}W])" : ""
         chgStr += powerChange < 0 ? "CurrentPower: (${currentPower}W [⇓${powerChange.abs()}W])" : ""
         chgStr += powerChange == 0 ?"CurrentPower: (${currentPower}W [${powerChange}W])" : ""
         log.info "$chgStr || CurrentEnergy: (${currentEnergy}kWh)"
+        state?.lastPower = currentPower
 
-        state.lastPower = currentPower
-
-        if (!state?.maxPowerReading || state?.maxPowerReading < currentPower) {
-            state.maxPowerReading = currentPower
+        def minPowerReading = state?.minPowerReading ?: null
+        def maxPowerReading = state?.maxPowerReading ?: null
+        if (!maxPowerReading || (maxPowerReading?.toFloat() < currentPower?.toFloat())) {
+            state?.maxPowerReading = currentPower?.toInteger()
             sendEvent(name: "maxPowerReading", value: "${currentPower}", unit: "W", description: "Highest Power Reading is ${currentPower}W", display: false, displayed: false)
         }
-        else if (!state?.minPowerReading || state?.minPowerReading > currentPower) {
-            state.minPowerReading = currentPower
-            sendEvent(name: "minPowerReading", value: currentPower, unit: "W", description: "Lowest Power Reading is ${currentPower}W", display: false, displayed: false)
+        else if (!minPowerReading || !state?.minPowerFix || (minPowerReading?.toFloat() > currentPower?.toFloat())) {
+            state?.minPowerReading = currentPower?.toInteger()
+            state?.minPowerFix = true
+            sendEvent(name: "minPowerReading", value: "${currentPower}", unit: "W", description: "Lowest Power Reading is ${currentPower}W", display: false, displayed: false)
         }
 
-        if (!state.maxEnergyReading || state.maxEnergyReading.toFloat() <= currentEnergy.toFloat()) {
-            state.maxEnergyReading = currentEnergy
-            sendEvent(name: "maxEnergyReading", value: currentEnergy.toString(), unit: "kWh", description: "Highest Day Energy Consumption is ${currentEnergy} kWh", display: false, displayed: false)
+        def minEnergyReading = state?.minEnergyReading ?: null
+        def maxEnergyReading = state?.maxEnergyReading ?: null
+        if (!maxEnergyReading || (maxEnergyReading?.toFloat() < currentEnergy?.toFloat())) {
+            state.maxEnergyReading = currentEnergy?.toFloat()
+            sendEvent(name: "maxEnergyReading", value: "${currentEnergy}", unit: "kWh", description: "Highest Day Energy Consumption is ${currentEnergy} kWh", display: false, displayed: false)
         }
-        else if (!state.minPowerReading || state.minPowerReading.toFloat() >= currentEnergy.toFloat()) {
-            state.minPowerReading = currentEnergy
-            sendEvent(name: "minEnergyReading", value: currentEnergy.toString(), unit: "kWh", description: "Lowest Day Energy Consumption is ${currentEnergy} kWh", display: false, displayed: false)
+        else if (!minEnergyReading || (minEnergyReading.toFloat() > currentEnergy?.toFloat())) {
+            state.minEnergyReading = currentEnergy?.toFloat()
+            sendEvent(name: "minEnergyReading", value: "${currentEnergy}", unit: "kWh", description: "Lowest Day Energy Consumption is ${currentEnergy} kWh", display: false, displayed: false)
         }
 
         if(!state?.powerTable) { state?.powerTable = [] }
@@ -288,14 +283,29 @@ private handleData(readingData, usageData) {
                 //log.debug "energyTable: $energyTable"
                 def dPwrAvg = getDayPowerAvg()
                 if(dPwrAvg && isStateChange(device, "dayPowerAvg", dPwrAvg?.toString())) {
-                    sendEvent(name: "dayPowerAvg", value: dPwrAvg, unit: "W", description: "Average Power Reading today was ${dPwrAvg}W", display: false, displayed: false)
+                    sendEvent(name: "dayPowerAvg", value: "${dPwrAvg}", unit: "W", description: "Average Power Reading today was ${dPwrAvg}W", display: false, displayed: false)
                 }
             }
         }
-
     } catch (ex) {
-        log.error "handleData Exception:", ex
+        log.error("handleData Exception:", ex)
     }
+}
+
+def getObjType(obj, retType=false) {
+	if(obj instanceof String) {return "String"}
+	else if(obj instanceof GString) {return "GString"}
+	else if(obj instanceof Map) {return "Map"}
+	else if(obj instanceof List) {return "List"}
+	else if(obj instanceof ArrayList) {return "ArrayList"}
+	else if(obj instanceof Integer) {return "Integer"}
+	else if(obj instanceof BigInteger) {return "BigInteger"}
+	else if(obj instanceof Long) {return "Long"}
+	else if(obj instanceof Boolean) {return "Boolean"}
+	else if(obj instanceof BigDecimal) {return "BigDecimal"}
+	else if(obj instanceof Float) {return "Float"}
+	else if(obj instanceof Byte) {return "Byte"}
+	else { return "unknown"}
 }
 
 def getLastRecUpdSec() { return state?.lastRecordDt == null ? 100000 : GetTimeDiffSeconds(state?.lastRecordDt, "getLastRecUpdSec")?.toInteger() }
@@ -472,7 +482,7 @@ def getDayPowerAvg() {
             def avgTmp = []
             state?.powerTable?.each() {
                 if(it[2] != null) {
-                    avgTmp?.add(it[2])
+                    avgTmp?.push(it[2])
                 }
             }
             if(avgTmp?.size() >= 2) {
@@ -497,16 +507,15 @@ def getAverage(items) {
 }
 
 def getListAvg(itemList, rnd=0) {
-	//log.debug "itemList: ${itemList}"
 	def avgRes = 0.0
 	def iCnt = itemList?.size()
 	if(iCnt >= 1) {
 		if(iCnt > 1) {
-			avgRes = (itemList?.sum().toDouble() / iCnt.toDouble()).toDouble()
-		} else { itemList?.each { avgRes = avgRes + it.toDouble() } }
+			avgRes = (itemList?.sum()?.toDouble() / iCnt?.toDouble())?.toDouble()
+		} else { itemList?.each { avgRes = avgRes + it?.toDouble() } }
 	}
-	//log.debug "[getIntListAvg] avgRes: $avgRes"
-	return avgRes.round(rnd)
+	// log.debug "getListAvg | avgRes: $avgRes"
+    return avgRes.round(rnd)
 }
 
 def updateAttributes(rData, uData, tData, hData) {
