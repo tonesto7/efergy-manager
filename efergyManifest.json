@@ -1,0 +1,36 @@
+{
+    "namespace": "tonesto7",
+    "repoOwner": "tonesto7",
+    "repoName": "efergy-manager",
+    "repoBranch": "master",
+    "name": "Efergy Manager",
+    "author": "Anthony S.",
+    "description": "Integrate your Efergy Engage Energy Monitors into SmartThings.",
+    "category": "My Apps",
+    "bannerUrl": "https://cdn.rawgit.com/tonesto7/efergy-manager/master/resources/images/efergy_manager_banner.png",
+    "forumUrl": "https://community.smartthings.com/t/updated-efergy-2-0-connect/",
+    "releaseType": "production",
+    "keywords": ["efergy", "engage", "energy", "monitor", "power"],
+    "notes": "",
+    "smartApps": {
+        "parent": {
+            "name": "Efergy Manager",
+            "iconUrl": "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/images/efergy_256.png",
+            "published": true,
+            "oAuth": true,
+            "version": "3.2.0",
+            "appSettings": {},
+            "appUrl": "smartapps/tonesto7/efergy-manager.src/efergy-manager.groovy"
+        },
+        "children": []
+    },
+    "deviceHandlers": [{
+            "name": "Efergy Engage Elite",
+            "iconUrl": "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/images/efergy_256.png",
+            "published": true,
+            "version": "3.2.2",
+            "appUrl": "deviceTypes/tonesto7/efergy-engage-elite.src/efergy-engage-elite.groovy",
+            "optional": false
+        }
+    ]
+}
