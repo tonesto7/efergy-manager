@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.2.2"}
-def versionDate() {"11-7-2017"}
+def devTypeVer() {"3.2.3"}
+def versionDate() {"3-19-2018"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -213,8 +213,8 @@ private handleData(Map readingData, Map usageData) {
         def previousPower = state?.lastPower ?: currentPower
         def powerChange = (currentPower - previousPower)
         def chgStr = ""
-        chgStr += powerChange > 0 ? "CurrentPower: (${currentPower}W [⇑${powerChange}W])" : ""
-        chgStr += powerChange < 0 ? "CurrentPower: (${currentPower}W [⇓${powerChange.abs()}W])" : ""
+        chgStr += powerChange > 0 ? "CurrentPower: (${currentPower}W [?${powerChange}W])" : ""
+        chgStr += powerChange < 0 ? "CurrentPower: (${currentPower}W [?${powerChange.abs()}W])" : ""
         chgStr += powerChange == 0 ?"CurrentPower: (${currentPower}W [${powerChange}W])" : ""
         log.info "$chgStr || CurrentEnergy: (${currentEnergy}kWh)"
         state?.lastPower = currentPower
@@ -457,8 +457,9 @@ def getSumUsage(table) {
 
 	//log.trace "$table"
 	table?.each() {
-        if(it[2].toDouble() < 0)
-		total = total + it[2].toDouble()
+        if(it[2] != null && it[2]?.isNumber() && it[2].toDouble() < 0) {
+		    total = total + it[2].toDouble()
+        }
 	}
     log.debug "total: $total"
 	return total.toDouble()
@@ -525,7 +526,7 @@ def updateAttributes(rData, uData, tData, hData) {
     def curDolSym = state?.currency?.dollar.toString()
     def curCentSym = state?.currency?.cent.toString()
     def currentEnergy = uData?.todayUsage
-    def tariffRate = (tData.tariffRate.toDouble()/100) ?: 0.0
+    def tariffRate = tData.tariffRate.isNumber() ? (tData.tariffRate.toDouble()/100) : 0.0
     logWriter("--------------UPDATE READING DATA-------------")
     logWriter("energy: ${currentEnergy} kWh")
     logWriter("power: ${rData?.powerReading}W")
