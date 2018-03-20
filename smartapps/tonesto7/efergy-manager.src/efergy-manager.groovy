@@ -515,7 +515,7 @@ def poll() {
 				sentToWV = true
 			}
 			LogAction("","info", true)
-			LogAction("└──────────────────────────────────","info", true)
+			LogAction("└─────────────────────","info", true)
 			if(wattvisionOk()) { LogAction("│	WattVision Updated: (${sentToWV.toString().capitalize()})","info", true) }
 			LogAction("│	Energy Reading: (${ener}kWh)","info", true)
 			LogAction("│	Power Reading: (${pwr}W)","info", true)
