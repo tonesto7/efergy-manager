@@ -1,7 +1,7 @@
 /**
 *  Efergy Engage Energy
 *
-*  Copyright 2017 Anthony S.
+*  Copyright 2016, 2017, 2018 Anthony S.
 *
 *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 *  in compliance with the License. You may obtain a copy of the License at:
@@ -17,8 +17,8 @@
 
 import java.text.SimpleDateFormat
 
-def devTypeVer() {"3.2.3"}
-def versionDate() {"3-19-2018"}
+def devTypeVer() {"3.3.0"}
+def versionDate() {"7-19-2018"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -213,8 +213,8 @@ private handleData(Map readingData, Map usageData) {
         def previousPower = state?.lastPower ?: currentPower
         def powerChange = (currentPower - previousPower)
         def chgStr = ""
-        chgStr += powerChange > 0 ? "CurrentPower: (${currentPower}W [?${powerChange}W])" : ""
-        chgStr += powerChange < 0 ? "CurrentPower: (${currentPower}W [?${powerChange.abs()}W])" : ""
+        chgStr += powerChange > 0 ? "CurrentPower: (${currentPower}W [\u21D1${powerChange}W])" : ""
+        chgStr += powerChange < 0 ? "CurrentPower: (${currentPower}W [\u21D3${powerChange.abs()}W])" : ""
         chgStr += powerChange == 0 ?"CurrentPower: (${currentPower}W [${powerChange}W])" : ""
         log.info "$chgStr || CurrentEnergy: (${currentEnergy}kWh)"
         state?.lastPower = currentPower
@@ -382,7 +382,7 @@ def updateHistoryData(today) {
 		return
 	}
 
-	Logger("dayNum: ${dayNum} currentDay ${hm.currentDay} | monthNum: ${monthNum} currentMonth ${hm.currentMonth}  | yearNum: ${yearNum} currentYear: ${hm.currentYear}")
+	Logger("dayNum: ${dayNum} currentDay ${hm.currentDay} | monthNum: ${monthNum} currentMonth ${hm.currentMonth} | yearNum: ${yearNum} currentYear: ${hm.currentYear}")
 
 	if(dayNum != hm.currentDay) {
 		dayChange = true
@@ -799,79 +799,6 @@ String getDataString(Integer seriesIndex) {
 	return dataString
 }
 
-def getFileB64(url,preType,fileType) {
-    try {
-        def params = [
-            uri: url,
-            contentType: '$preType/$fileType'
-        ]
-        httpGet(params) { resp ->
-            if(resp.data) {
-                def respData = resp?.data
-                ByteArrayOutputStream bos = new ByteArrayOutputStream()
-                int len
-                int size = 4096
-                byte[] buf = new byte[size]
-                while ((len = respData.read(buf, 0, size)) != -1)
-                    bos.write(buf, 0, len)
-                buf = bos.toByteArray()
-                //log.debug "buf: $buf"
-                String s = buf?.encodeBase64()
-                //log.debug "resp: ${s}"
-                return s ? "data:${preType}/${fileType};base64,${s.toString()}" : null
-            }
-        }
-    }
-    catch (ex) {
-        log.error "getFileB64 Exception:", ex
-    }
-}
-
-def getCSS(url = null){
-    try {
-        def params = [
-            uri: !url ? cssUrl() : url?.toString(),
-            contentType: 'text/css'
-        ]
-        httpGet(params)  { resp ->
-            return resp?.data.text
-        }
-    }
-    catch (ex) {
-        log.error "getCss Exception:", ex
-    }
-}
-
-def getJS(url){
-    try {
-        def params = [
-            uri: url?.toString(),
-            contentType: "text/plain"
-        ]
-        httpGet(params)  { resp ->
-            return resp?.data.text
-        }
-    } catch (ex) {
-        log.error "getJS Exception: ", ex
-    }
-}
-
-def getCssData() {
-    def cssData = null
-    cssData = getFileB64(cssUrl(), "text", "css")
-    return cssData
-}
-
-def getChartJsData(url=null) {
-    def chartJsData = null
-    chartJsData = getFileB64((url ?: chartJsUrl()), "text", "javascript")
-    return chartJsData
-}
-
-def cssUrl() { return "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/style.css" }//"https://dl.dropboxusercontent.com/s/bg3o43vntlvqi5n/efergydevice.css" }
-
-def chartJsUrl() { return "https://www.gstatic.com/charts/loader.js" }
-
 def getImg(imgName) { return imgName ? "https://cdn.rawgit.com/tonesto7/efergy-manager/master/Images/Devices/$imgName" : "" }
 
 def getStartTime() {
@@ -902,7 +829,7 @@ def getGraphHTML() {
     try {
         def updateAvail = !state?.updateAvailable ? "" : """<h3 style="background: #ffa500;">Device Update Available!</h3>"""
         def chartHtml = ((state?.powerTable && state?.powerTable.size() > 0) || (state?.energyTable && state?.energyTable?.size() > 0)) ? showChartHtml() : hideChartHtml()
-        def refreshBtnHtml = """<div class="pageFooterBtn"><button type="button" class="btn btn-info pageFooterBtn" onclick="reloadPage()"><span>⟳</span> Refresh</button></div>"""
+        def refreshBtnHtml = """<div class="pageFooterBtn"><button type="button" class="btn btn-info pageFooterBtn" onclick="reloadPage()"><span>âŸ³</span> Refresh</button></div>"""
         def html = """
         <!DOCTYPE html>
         <html>
@@ -913,8 +840,8 @@ def getGraphHTML() {
                 <meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT"/>
                 <meta http-equiv="pragma" content="no-cache"/>
                 <meta name="viewport" content="width = device-width, user-scalable=no, initial-scale=1.0">
-                <link rel="stylesheet prefetch" href="${getCssData()}"/>
-                <script type="text/javascript" src="${getChartJsData()}"></script>
+                <link rel="stylesheet prefetch" href="https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/style.css"/>
+                <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
                 <style>
                     .pageFooterBtn {
                         padding: 10px;

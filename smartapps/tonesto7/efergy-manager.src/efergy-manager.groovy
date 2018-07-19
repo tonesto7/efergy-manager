@@ -2,7 +2,7 @@
 ********************************************************************************************|
 |    Application Name: Efergy Manager 3.0                                                   |
 |    Author: Anthony S. (@tonesto7)                                                         |
-|    Copyright 2016 Anthony S.                                                              |
+|    Copyright 2016, 2017, 2018 Anthony S.                                                  |
 |                                                                                           |
 |  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file|
 |  except in compliance with the License. You may obtain a copy of the License at:           |
@@ -43,10 +43,14 @@ definition(
 	Add offline Hub handling to verify that the hub is online instead of generating errors.
 */
 
-def appVersion() { "3.2.0" }
-def appVerDate() { "6-13-2017" }
+def appVersion() { "3.2.1" }
+def appVerDate() { "7-19-2017" }
 def appVerInfo() {
 	def str = ""
+	str += "V3.2.0 (July 19th, 2018):"
+	str += "\n▔▔▔▔▔▔▔▔▔▔▔"
+	str += "\n • Updated: Copyright Dates"
+	
 	str += "V3.2.0 (June 8th, 2017):"
 	str += "\n▔▔▔▔▔▔▔▔▔▔▔"
 	str += "\n • Updated: Rebuilt data collection from Efergy"
