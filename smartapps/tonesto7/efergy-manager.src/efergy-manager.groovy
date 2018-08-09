@@ -44,7 +44,7 @@ definition(
 */
 
 def appVersion() { "3.2.1" }
-def appVerDate() { "7-19-2017" }
+def appVerDate() { "8-09-2017" }
 def appVerInfo() {
 	def str = ""
 	str += "V3.2.0 (July 19th, 2018):"
@@ -503,13 +503,10 @@ def updated() {
 	sendNotificationEvent("${textAppName()} - ${appVersion()} (${appVerDate()}) updated...")
 	log.info "${textAppName()} - ${appVersion()} (${appVerDate()}) updated..."
 	unsubscribe()
-	unsubscribe()
 	initialize()
 }
 
 def uninstalled() {
-	unschedule()
-	unsubscribe()
 	addRemoveDevices(true)
 }
 
@@ -518,6 +515,7 @@ def initialize() {
 	addRemoveDevices()
 	addSchedule()
 	evtSubscribe()
+	if(settings?.pushoverEnabled) { pushover_init() }
 	poll()
 }
 
