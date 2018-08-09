@@ -28,6 +28,7 @@ metadata {
         capability "Refresh"
         capability "Actuator"
         capability "Sensor"
+        capability "Health Check"
 
         attribute "todayUsage", "string"
         attribute "todayCost", "string"
@@ -169,6 +170,23 @@ void refresh() {
 void poll() {
     log.info "Poll command received..."
     parent?.poll()
+}
+
+def installed() {
+	log.trace "Executing 'installed'"
+	initialize()
+}
+
+def updated() {
+	log.trace "Executing 'updated'"
+	initialize()
+}
+
+private initialize() {
+	log.trace "Executing 'initialize'"
+ 	sendEvent(name: "DeviceWatch-DeviceStatus", value: "online")
+	sendEvent(name: "healthStatus", value: "online")
+	sendEvent(name: "DeviceWatch-Enroll", value: [protocol: "cloud", scheme:"untracked"].encodeAsJson(), displayed: false)
 }
 
 void generateEvent(Map eventData) {
@@ -735,7 +753,7 @@ def getDtNow() {
 
 def getTzOffSet() {
 	def val = location?.timeZone?.getRawOffset()
-	val = ((val / 1000) / 60)
+	val = val/1000/60
 	state?.tzOffsetVal = val ?: 0
 }
 
