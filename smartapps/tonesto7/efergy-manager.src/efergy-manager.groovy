@@ -938,7 +938,6 @@ def sendMsgNew(String msgType, String msg, Boolean showEvt=true, Map pushoverMap
 				atomicState?.lastMsg = flatMsg
 				atomicState?.lastMsgDt = getDtNow()
 				LogAction("sendMsgNew: Sent ${sentstr} (${flatMsg})", "debug", true)
-				incAppNotifSentCnt()
 			}
 		}
 	} catch (ex) {
