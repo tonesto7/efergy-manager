@@ -858,7 +858,7 @@ def getGraphHTML() {
                 <meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT"/>
                 <meta http-equiv="pragma" content="no-cache"/>
                 <meta name="viewport" content="width = device-width, user-scalable=no, initial-scale=1.0">
-                <link rel="stylesheet" href="https://rawgit.com/tonesto7/efergy-manager/master/resources/style.css"/>
+                <link rel="stylesheet" href="https://cdn.rawgit.com/tonesto7/efergy-manager/master/resources/style.css"/>
                 <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
                 <style>
                     .pageFooterBtn {
