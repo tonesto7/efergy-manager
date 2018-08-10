@@ -18,7 +18,7 @@
 import java.text.SimpleDateFormat
 
 def devTypeVer() {"3.3.0"}
-def versionDate() {"7-19-2018"}
+def versionDate() {"8-10-2018"}
 
 metadata {
     definition (name: "Efergy Engage Elite", namespace: "tonesto7", author: "Anthony S.") {
@@ -67,8 +67,8 @@ metadata {
             }
             tileAttribute("todayUsage_str", key: "SECONDARY_CONTROL") {
                       attributeState "default", label: 'Today\'s Usage: ${currentValue}'
-               }
-          }
+            }
+        }
 
         valueTile("todayUsage_str", "device.todayUsage_str", width: 3, height: 1, decoration: "flat", wordWrap: true) {
             state "default", label: 'Today\'s Usage:\n${currentValue}'
@@ -119,7 +119,7 @@ metadata {
         valueTile("devVer", "device.devTypeVer", width: 4, height: 1, decoration: "flat", wordWrap: true) {
             state "default", label: 'Device Type Version:\nv${currentValue}'
         }
-        htmlTile(name:"graphHTML", action: "getGraphHTML", width: 6, height: 18, whitelist: ["www.gstatic.com", "raw.githubusercontent.com", "cdn.rawgit.com"])
+        htmlTile(name:"graphHTML", action: "getGraphHTML", width: 6, height: 10, whitelist: ["www.gstatic.com", "raw.githubusercontent.com", "cdn.rawgit.com"])
 
         main (["powerMulti"])
         details(["powerMulti", "todayUsage_str", "monthUsage_str", "monthEst_str", "budgetPercentage_str", "tariffRate_str", "readingUpdated_str", "pwrMin", "pwrAvg", "pwrMax", "graphHTML", "refresh"])
@@ -817,7 +817,7 @@ String getDataString(Integer seriesIndex) {
 	return dataString
 }
 
-def getImg(imgName) { return imgName ? "https://cdn.rawgit.com/tonesto7/efergy-manager/master/Images/Devices/$imgName" : "" }
+def getImg(imgName) { return imgName ? "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/Images/Devices/$imgName" : "" }
 
 def getStartTime() {
 	def startTime = 24
@@ -847,7 +847,7 @@ def getGraphHTML() {
     try {
         def updateAvail = !state?.updateAvailable ? "" : """<h3 style="background: #ffa500;">Device Update Available!</h3>"""
         def chartHtml = ((state?.powerTable && state?.powerTable.size() > 0) || (state?.energyTable && state?.energyTable?.size() > 0)) ? showChartHtml() : hideChartHtml()
-        def refreshBtnHtml = """<div class="pageFooterBtn"><button type="button" class="btn btn-info pageFooterBtn" onclick="reloadPage()"><span>âŸ³</span> Refresh</button></div>"""
+        def refreshBtnHtml = """<div class="pageFooterBtn"><button type="button" class="btn btn-info pageFooterBtn" onclick="reloadPage()"><span>&#10227</span> Refresh</button></div>"""
         def html = """
         <!DOCTYPE html>
         <html>
@@ -858,7 +858,7 @@ def getGraphHTML() {
                 <meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT"/>
                 <meta http-equiv="pragma" content="no-cache"/>
                 <meta name="viewport" content="width = device-width, user-scalable=no, initial-scale=1.0">
-                <link rel="stylesheet prefetch" href="https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/style.css"/>
+                <link rel="stylesheet" href="https://rawgit.com/tonesto7/efergy-manager/master/resources/style.css"/>
                 <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
                 <style>
                     .pageFooterBtn {
@@ -971,7 +971,7 @@ def showChartHtml() {
             series: {
                 0: {targetAxisIndex: 1, color: '#cbe5a9', lineWidth: 1, visibleInLegend: false},
                 1: {targetAxisIndex: 0, color: '#fcd4a2', lineWidth: 1, visibleInLegend: false},
-                2: {targetAxisIndex: 1, color: '#8CC63F'},
+                2: {targetAxisIndex: 1, color: '#8CC640'},
                 3: {targetAxisIndex: 0, color: '#F8971D'}
             },
             vAxes: {
@@ -984,8 +984,8 @@ def showChartHtml() {
                 1: {
                   title: 'Energy Consumed (kWh)',
                   format: 'decimal',
-                  textStyle: {color: '#8CC63F'},
-                  titleTextStyle: {color: '#8CC63F'}
+                  textStyle: {color: '#8CC640'},
+                  titleTextStyle: {color: '#8CC640'}
                 }
             },
             legend: {
@@ -1006,7 +1006,7 @@ def showChartHtml() {
           chart.draw(data, options);
         }
           </script>
-          <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC63F; color: #f5f5f5;">Usage History</h4>
+          <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC640; color: #f5f5f5;">Usage History</h4>
           <div id="chart_div" style="width: 100%; height: 225px;"></div>
         """
         return data
@@ -1018,7 +1018,7 @@ def showChartHtml() {
 def hideChartHtml() {
     try {
         def data = """
-        <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC63F; color: #f5f5f5;">Usage History</h4>
+        <h4 style="font-size: 22px; font-weight: bold; text-align: center; background: #8CC640; color: #f5f5f5;">Usage History</h4>
         <br></br>
         <div class="centerText">
           <p>Waiting for more data to be collected...</p>

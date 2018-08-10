@@ -206,6 +206,7 @@ th {
     -webkit-font-smoothing: antialiased;
     color: #f5f5f5;
     text-shadow: 0 0 1px rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
     -webkit-border-radius: 2px;
     -moz-border-radius: 2px;
     background: #8CC640;

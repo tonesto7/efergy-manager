@@ -23,10 +23,10 @@ import java.text.SimpleDateFormat
 import org.joda.time.DateTime;
 
 definition(
-	name: "${textAppName()}",
-	namespace: "${textNamespace()}",
-	author: "${textAuthor()}",
-	description: "${textDesc()}",
+	name: "${appName()}",
+	namespace: "${appNamespace()}",
+	author: "${appAuthor()}",
+	description: "This app will handle the connection to Efergy Servers and generate an API token and create the energy device. It will also update the data automatically for you every 30 seconds",
 	category: "Convenience",
 	iconUrl:   "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/images/efergy_128.png",
 	iconX2Url: "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/images/efergy_256.png",
@@ -43,10 +43,16 @@ definition(
 	Add offline Hub handling to verify that the hub is online instead of generating errors.
 */
 
-def appVersion() { "3.2.1" }
-def appVerDate() { "8-09-2017" }
+def appVer() { "3.3.0" }
+def appVerDate() { "8-10-2018" }
 def appVerInfo() {
 	def str = ""
+	str += "V3.3.0 (August 10th, 2018):"
+	str += "\n▔▔▔▔▔▔▔▔▔▔▔"
+	str += "\n • Added: Pushover Manager Integration"
+	str += "\n • Fixed: Fixed dozens of bugs and unfinshed logic (:( Sorry)"
+	str += "\n • Fixed: Lot's of code cleanup"
+
 	str += "V3.2.0 (July 19th, 2018):"
 	str += "\n▔▔▔▔▔▔▔▔▔▔▔"
 	str += "\n • Updated: Copyright Dates"
@@ -106,14 +112,24 @@ def startPage() {
 	else { return loginPage() }
 }
 
+def appInfoSect(sect=true)	{
+	def str = ""
+		str += "${app?.name}"
+		str += "\nCopyright\u00A9 2018 ${appAuthor()}"
+		str += "\nVersion: ${appVer()}"
+    if(sect) {
+		section() { href "changeLogPage", title: "", description: str, image: getAppImg("efergy_256.png", true) }
+	} else {
+		paragraph str, image: getAppImg("efergy_256.png", true)
+	}
+}
+
 /* Efergy Login Page */
 def loginPage() {
 	if(atomicState?.efergyAuthToken != null) { return mainPage() }
 	else {
 		return dynamicPage(name: "loginPage", nextPage: mainPage, uninstall: false, install: false) {
-			section("") {
-				href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png")
-			}
+			appInfoSect()
 			section("Efergy Login Page") {
 				paragraph "Please enter your https://engage.efergy.com login credentials to generate you Authentication Token and install the device automatically for you."
 				input("username", "email", title: "Username", description: "Efergy Username (email address)")
@@ -138,9 +154,7 @@ def mainPage() {
 
 	dynamicPage(name: "mainPage", uninstall: false, install: true) {
 		if (atomicState?.efergyAuthToken) {
-			section("") {
-				href "changeLogPage", title: "", description: "${appInfoDesc()}", image: getAppImg("efergy_512.png", true)
-			}
+			appInfoSect()
 			if(setupComplete) {
 				if(atomicState?.energyInfoData?.hubData && atomicState?.readingData) {
 					section("Efergy Hub:") {
@@ -149,8 +163,7 @@ def mainPage() {
 						rStr += atomicState?.readingData?.readingUpdated ? "Last Reading:\n${atomicState?.readingData?.readingUpdated}" : ""
 						rStr += atomicState?.readingData?.powerReading ? "${atomicState?.readingData?.readingUpdated ? "\n" : ""}Power Reading: (${atomicState?.readingData?.powerReading}W)" : ""
 						rStr += "\n\nTap to view more..."
-						href "readingInfoPage", title:"View Energy Data", description: rStr, state: (atomicState?.readingData?.readingUpdated ? "complete" : null),
-								image: getAppImg("power_meter.png")
+						href "readingInfoPage", title:"View Energy Data", description: rStr, state: (atomicState?.readingData?.readingUpdated ? "complete" : null), image: getAppImg("power_meter.png")
 					}
 				}
 				if(wattvisionOk()) {
@@ -158,11 +171,15 @@ def mainPage() {
 						input("updateWattVision", "bool", title: "Send Power Data to WattVision API?", description: "", image: getAppImg("wattvision_icon.png"))
 					}
 				}
-				section("Preferences:") {
+				section("Notifications:") {
+					def t0 = getAppNotifConfDesc()
+					href "notifPrefPage", title: "Notifications", description: (t0 ? "${t0}\n\nTap to modify" : "Tap to configure"), state: (t0 ? "complete" : null), image: getAppImg("notification_icon2.png")
+				}
+				section("Currency and Logging:") {
 					def descStr = ""
 					def sz = descStr.size()
-					descStr += getAppNotifConfDesc() ?: ""
-					if(descStr.size() != sz) { descStr += "\n\n"; sz = descStr.size() }
+					descStr += "Currency Symbol: ${settings?.currencySym ?: "\$"}"
+					if(descStr.size() != sz) { descStr += "\n"; sz = descStr.size() }
 					descStr += getAppDebugDesc() ?: ""
 					if(descStr.size() != sz) { descStr += "\n\n"; sz = descStr.size() }
 					def prefDesc = (descStr != "") ? "${descStr}Tap to Modify..." : "Tap to Configure..."
@@ -173,9 +190,8 @@ def mainPage() {
 					paragraph "Tap Done to complete the install..."
 				}
 			}
-
-			section("Info") {
-				href "infoPage", title: "Info and Instructions", description: "Tap to view...", image: getAppImg("info.png")
+			section("Donate, Release and License Info") {
+				href "infoPage", title: "Info and More", description: "Tap to view...", image: getAppImg("info_bubble.png")
 			}
 			section("") {
 				href "uninstallPage", title: "Uninstall this App", description: "Tap to Remove...", image: getAppImg("uninstall_icon.png")
@@ -200,12 +216,7 @@ def prefsPage () {
 	dynamicPage(name: "prefsPage", title: "Application Preferences", install: false, uninstall: false) {
 		section("Currency Selection:"){
 			   input(name: "currencySym", type: "enum", title: "Select your Currency Symbol", options: ["\$", "£", "€"], defaultValue: "\$", submitOnChange: true, image: getAppImg("currency_icon.png"))
-			   atomicState.currencySym = currencySym
-		}
-		// Set Notification Recipients
-		section("Notifications:") {
-			def t1 = getAppNotifConfDesc()
-			href "notifPrefPage", title: "Notifications", description: (t1 ? "${t1}\n\nTap to modify" : "Tap to configure"), state: (t1 ? "complete" : null), image: getAppImg("notification_icon2.png")
+			   atomicState.currencySym = settings?.currencySym
 		}
 		section("Logging:") {
 			def dbgDesc = getAppDebugDesc()
@@ -221,13 +232,12 @@ def debugPrefPage() {
 			input (name: "appDebug", type: "bool", title: "Show App Logs in the IDE?", required: false, defaultValue: false, submitOnChange: true, image: getAppImg("log.png"))
 			if (settings?.appDebug) {
 				LogAction("Debug Logs are Enabled...", "info", false)
-			}
-			else { LogAction("Debug Logs are Disabled...", "info", false) }
+			} else { LogAction("Debug Logs are Disabled...", "info", false) }
 		}
 		section ("Child Device Logs") {
 			input (name: "childDebug", type: "bool", title: "Show Device Logs in the IDE?", required: false, defaultValue: false, submitOnChange: true, image: getAppImg("log.png"))
-			if (settings?.childDebug) { LogAction("Device Debug Logs are Enabled...", "info", false) }
-			else { LogAction("Device Debug Logs are Disabled...", "info", false) }
+			if (settings?.childDebug) { LogAction("Device Debug Logs are Enabled...", "info", false) 
+			} else { LogAction("Device Debug Logs are Disabled...", "info", false) }
 		}
 	}
 }
@@ -243,13 +253,15 @@ def notifPrefPage() {
 		section("Enable Pushover Support:") {
 			input ("pushoverEnabled", "bool", title: "Use Pushover Integration", required: false, submitOnChange: true, image: getAppImg("pushover_icon.png"))
 			if(settings?.pushoverEnabled == true) {
-				if(atomicState?.isInstalled) {
+				if(atomicState?.appInstalled) {
 					if(!atomicState?.pushoverManager) {
 						paragraph "If this is the first time enabling Pushover than leave this page and come back if the devices list is empty"
 						pushover_init()
 					} else {
 						input "pushoverDevices", "enum", title: "Select Pushover Devices", description: "Tap to select", groupedOptions: getPushoverDevices(), multiple: true, required: false, submitOnChange: true
 						if(settings?.pushoverDevices) {
+							def t0 = [(-2):"Lowest", (-1):"Low", 0:"Normal", 1:"High", 2:"Emergency"]
+							input "pushoverPriority", "enum", title: "Notification Priority (Optional)", description: "Tap to select", defaultValue: 0, required: false, multiple: false, submitOnChange: true, options: t0
 							input "pushoverSound", "enum", title: "Notification Sound (Optional)", description: "Tap to select", defaultValue: "pushover", required: false, multiple: false, submitOnChange: true, options: getPushoverSounds()
 						}
 					}
@@ -258,7 +270,7 @@ def notifPrefPage() {
 		}
 		if(settings?.phone || settings?.usePush || (settings?.pushoverEnabled && settings?.pushoverDevices)) {
 			if((settings?.usePush || (settings?.pushoverEnabled && settings?.pushoverDevices)) && !atomicState?.pushTested && atomicState?.pushoverManager) {
-				if(sendMsg("Info", "Push Notification Test Successful. Notifications Enabled for ${textAppName()}", true)) {
+				if(sendMsgNew("Info", "Push Notification Test Successful. Notifications Enabled for ${appName()}", true)) {
 					atomicState.pushTested = true
 				}
 			}
@@ -331,20 +343,17 @@ def setNotificationTimePage() {
 def infoPage () {
 	dynamicPage(name: "infoPage", title: "Help, Info and Instructions", install: false) {
 		section("About this App:") {
-			paragraph appInfoDesc(), image: getAppImg("efergy_256.png", true)
+			appInfoSect(false)
 		}
 		section("Donations:") {
-			href url: textDonateLink(), style:"external", required: false, title:"Donations",
+			href url: donatationLink(), style:"external", required: false, title:"Donations",
 				description:"Tap to Open in Mobile Browser...", state: "complete", image: getAppImg("donate_icon.png")
-		}
-		section("Created by:") {
-			paragraph "Anthony S. (@tonesto7)", state: "complete"
 		}
 		section("App Revision History:") {
 			href "changeLogPage", title: "View App Change Log Info", description: "Tap to View...", image: getAppImg("change_log_icon.png")
 		}
 		section("Licensing Info:") {
-			paragraph "${textCopyright()}\n${textLicense()}"
+			paragraph "${licenseText()}"
 		}
 	}
 }
@@ -360,12 +369,9 @@ def changeLogPage () {
 def uninstallPage() {
 	dynamicPage(name: "uninstallPage", title: "Uninstall", uninstall: true) {
 		section("") {
-			if(parent) {
-				paragraph "This will uninstall the ${app?.label} Automation!!!"
-			} else {
-				paragraph "This will uninstall the App, All Automation Apps and Child Devices.\n\nPlease make sure that any devices created by this app are removed from any routines/rules/smartapps before tapping Remove."
-			}
+			paragraph "This will uninstall the App, All Automation Apps and Child Devices.\n\nPlease make sure that any devices created by this app are removed from any routines/rules/smartapps before tapping Remove."
 		}
+		remove("Remove ${appName()} and Devices!", "WARNING!!!", "Last Chance to Stop!\nThis action is not reversible\n\nThis App and Devices will be removed")
 	}
 }
 
@@ -376,35 +382,20 @@ def getAppNotifConfDesc() {
 		def nd = getNotifSchedDesc()
 		str += (settings?.usePush) ? "${str != "" ? "\n" : ""}Sending via: (Push)" : ""
 		str += (settings?.pushoverEnabled) ? "${str != "" ? "\n" : ""}Pushover: (Enabled)" : ""
-		str += (settings?.pushoverEnabled && settings?.pushoverSound) ? "${str != "" ? "\n" : ""}Pushover Sound: (${settings?.pushoverSound})" : ""
+		str += (settings?.pushoverEnabled && settings?.pushoverPriority) ? "${str != "" ? "\n" : ""} • Priority: (${settings?.pushoverPriority})" : ""
+		str += (settings?.pushoverEnabled && settings?.pushoverSound) ? "${str != "" ? "\n" : ""} • Sound: (${settings?.pushoverSound})" : ""
 		str += (settings?.phone) ? "${str != "" ? "\n" : ""}Sending via: (SMS)" : ""
-		str += (ap) ? "${str != "" ? "\n" : ""}Enabled Alerts:" : ""
-		str += (nd) ? "${str != "" ? "\n" : ""}\nAlert Restrictions:\n${nd}" : ""
+		str += (ap != null) ? "${str != "" ? "\n" : ""}\nEnabled Alerts:\n${ap}" : ""
+		str += (nd != null) ? "${str != "" ? "\n" : ""}\nAlert Restrictions:\n${nd}" : ""
 	}
 	return str != "" ? str : null
 }
 
 def getAppNotifDesc() {
 	def str = ""
-	str += settings?.sendMissedPollMsg != false ? "${str != "" ? "\n" : ""}• Missed Poll Alerts: (${strCapitalize(settings?.sendMissedPollMsg ?: "True")})" : ""
-	str += settings?.sendAppUpdateMsg != false ? "${str != "" ? "\n" : ""}• Code Updates: (${strCapitalize(settings?.sendAppUpdateMsg ?: "True")})" : ""
+	str += settings?.sendMissedPollMsg != false ? "${str != "" ? "\n" : ""} • Missed Poll Alerts: (${strCapitalize(settings?.sendMissedPollMsg ?: "True")})" : ""
+	str += settings?.sendAppUpdateMsg != false ? "${str != "" ? "\n" : ""} • Code Updates: (${strCapitalize(settings?.sendAppUpdateMsg ?: "True")})" : ""
 	return str != "" ? str : null
-}
-
-def getRecipientsNames(val) {
-	def n = ""
-	def i = 0
-	if(val) {
-		val?.each { r ->
-			i = i + 1
-			n += "${(i == val?.size()) ? "${r}" : "${r},"}"
-		}
-	}
-	return n?.toString().replaceAll("\\,", "\n")
-}
-
-def getRecipientDesc() {
-	return ((settings?."NotifRecips") || (settings?."NotifPhones" || settings?."NotifUsePush")) ? "${getRecipientsNames(settings?."NotifRecips")}" : null
 }
 
 def getInputToStringDesc(inpt, addSpace = null) {
@@ -420,6 +411,10 @@ def getInputToStringDesc(inpt, addSpace = null) {
 	return (str != "") ? "${str}" : null
 }
 
+def strCapitalize(str) {
+	return str ? str?.toString().capitalize() : null
+}
+
 def getNotifSchedDesc() {
 	def sun = getSunriseAndSunset()
 	def startInput = settings?.qStartInput
@@ -431,11 +426,11 @@ def getNotifSchedDesc() {
 	def notifDesc = ""
 	def getNotifTimeStartLbl = ( (startInput == "Sunrise" || startInput == "Sunset") ? ( (startInput == "Sunset") ? epochToTime(sun?.sunset.time) : epochToTime(sun?.sunrise.time) ) : (startTime ? time2Str(startTime) : "") )
 	def getNotifTimeStopLbl = ( (stopInput == "Sunrise" || stopInput == "Sunset") ? ( (stopInput == "Sunset") ? epochToTime(sun?.sunset.time) : epochToTime(sun?.sunrise.time) ) : (stopTime ? time2Str(stopTime) : "") )
-	notifDesc += (getNotifTimeStartLbl && getNotifTimeStopLbl) ? "• Silent Time: ${getNotifTimeStartLbl} - ${getNotifTimeStopLbl}" : ""
+	notifDesc += (getNotifTimeStartLbl && getNotifTimeStopLbl) ? " • Silent Time: ${getNotifTimeStartLbl} - ${getNotifTimeStopLbl}" : ""
 	def days = getInputToStringDesc(dayInput)
 	def modes = getInputToStringDesc(modeInput)
-	notifDesc += days ? "${(getNotifTimeStartLbl || getNotifTimeStopLbl) ? "\n" : ""}• Silent Day${isPluralString(dayInput)}: ${days}" : ""
-	notifDesc += modes ? "${(getNotifTimeStartLbl || getNotifTimeStopLbl || days) ? "\n" : ""}• Silent Mode${isPluralString(modeInput)}: ${modes}" : ""
+	notifDesc += days ? "${(getNotifTimeStartLbl || getNotifTimeStopLbl) ? "\n" : ""} • Silent Day${isPluralString(dayInput)}: ${days}" : ""
+	notifDesc += modes ? "${(getNotifTimeStartLbl || getNotifTimeStopLbl || days) ? "\n" : ""} • Silent Mode${isPluralString(modeInput)}: ${modes}" : ""
 	return (notifDesc != "") ? "${notifDesc}" : null
 }
 
@@ -493,15 +488,15 @@ def hubInfoPage () {
 
 def installed() {
 	atomicState.appInstalled = true
-	sendNotificationEvent("${textAppName()} - ${appVersion()} (${appVerDate()}) installed...")
-	log.info "${textAppName()} - ${appVersion()} (${appVerDate()}) installed..."
+	sendNotificationEvent("${appName()} - ${appVer()} (${appVerDate()}) installed...")
+	log.info "${appName()} - ${appVer()} (${appVerDate()}) installed..."
 	initialize()
 }
 
 def updated() {
 	if (!atomicState.appInstalled) { atomicState.appInstalled = true }
-	sendNotificationEvent("${textAppName()} - ${appVersion()} (${appVerDate()}) updated...")
-	log.info "${textAppName()} - ${appVersion()} (${appVerDate()}) updated..."
+	sendNotificationEvent("${appName()} - ${appVer()} (${appVerDate()}) updated...")
+	log.info "${appName()} - ${appVer()} (${appVerDate()}) updated..."
 	unsubscribe()
 	initialize()
 }
@@ -602,7 +597,7 @@ private addRemoveDevices(uninst=false) {
 		def d = getChildDevice(dni)
 		if(!uninst) {
 			if(!d) {
-				d = addChildDevice(textNamespace(), childDevName(), dni, null, [name: childDevName(), label: childDevName(), completedSetup: true])
+				d = addChildDevice(appNamespace(), childDevName(), dni, null, [name: childDevName(), label: childDevName(), completedSetup: true])
 				d.take()
 				LogAction("Successfully Created Child Device: ${d.displayName} (${dni})", "info", true)
 				devsInUse += dni
@@ -636,12 +631,11 @@ def updateDeviceData() {
 		def api = !apiIssues() ? false : true
 		def dbg = !settings?.childDebug ? false : true
 		def devs = app?.getChildDevices(true)
-		def isOnline = false
+		def isOnline = !(getLastDevicePollSec() > 300)
 		if(devs?.size() > 0) {
 			LogAction(" ", "trace", false)
 			LogAction("--------------Sending Data to Device--------------", "trace", false)
 			if(enerData && readData) {
-				isOnline = true
 				def devData = [
 					"usageData":enerData?.usageData,
 					"tariffData":enerData?.tariffData,
@@ -809,14 +803,14 @@ def isChildDebug() { return !settings?.childDebug ? false : true }
 /************************************************************************************************
 |								Push Notification Functions										|
 *************************************************************************************************/
-def pushStatus() { return (settings?.recipients || settings?.phone || settings?.usePush) ? (settings?.usePush ? "Push Enabled" : "Enabled") : null }
+def pushStatus() { return (settings?.phone || settings?.usePush || settings?.pushoverEnabled) ? ((settings?.usePush || (settings?.pushoverEnabled && settings?.pushoverDevices)) ? "Push Enabled" : "Enabled") : null }
 def getLastMsgSec() { return !atomicState?.lastMsgDt ? 100000 : GetTimeDiffSeconds(atomicState?.lastMsgDt, "getLastMsgSec").toInteger() }
 def getLastUpdMsgSec() { return !atomicState?.lastUpdMsgDt ? 100000 : GetTimeDiffSeconds(atomicState?.lastUpdMsgDt, "getLastUpdMsgSec").toInteger() }
 def getLastMisPollMsgSec() { return !atomicState?.lastMisPollMsgDt ? 100000 : GetTimeDiffSeconds(atomicState?.lastMisPollMsgDt, "getLastMisPollMsgSec").toInteger() }
 def getRecipientsSize() { return !settings.recipients ? 0 : settings?.recipients.size() }
 
 def latestDevVer() { return atomicState?.appData?.updater?.versions?.dev ?: "unknown" }
-def getOk2Notify() { return ((settings?.recipients || settings?.usePush) && (daysOk(settings?.quietDays) && notificationTimeOk() && modesOk(settings?.quietModes))) }
+def getOk2Notify() { return ((settings?.recipients || settings?.usePush || (settings?.pushoverEnabled && settings?.pushoverDevices)) && (daysOk(settings?.quietDays) && notificationTimeOk() && modesOk(settings?.quietModes))) }
 def getLastDevicePollSec() { return !atomicState?.lastDevDataUpd ? 840 : GetTimeDiffSeconds(atomicState?.lastDevDataUpd, "getLastDevicePollSec").toInteger() }
 
 def notificationCheck() {
@@ -831,9 +825,10 @@ void missPollNotify(on, wait) {
 	if(!on || !wait || !missedPoll) { return }
 	if(on && missedPoll) {
 		def msg = "\nThe app has not refreshed energy data in the last (${getLastDevicePollSec()}) seconds.\nPlease try refreshing data using device refresh button."
-		sendMsg("${app.name} Polling Issue", msg)
 		LogAction(msg.toString().replaceAll("\n", " "), "warn", true)
-		atomicState?.lastMisPollMsgDt = getDtNow()
+		if(sendMsgNew("${app.name} Polling Issue", msg)) {
+			atomicState?.lastMisPollMsgDt = getDtNow()
+		}
 	}
 }
 
@@ -846,7 +841,7 @@ void appUpdateNotify() {
 			def str = ""
 			str += !appUpd ? "" : "\nManager App: v${atomicState?.appData?.updater?.versions?.app?.ver?.toString()}"
 			str += !devUpd ? "" : "\nElite Device: v${atomicState?.appData?.updater?.versions?.dev?.ver?.toString()}"
-			sendMsg("Info", "Efergy Manager Update(s) are Available:${str}...\n\nPlease visit the IDE to Update your code...")
+			sendMsgNew("Info", "Efergy Manager Update(s) are Available:${str}...\n\nPlease visit the IDE to Update your code...")
 			atomicState?.lastUpdMsgDt = getDtNow()
 		}
 	}
@@ -918,7 +913,7 @@ def sendMsgNew(String msgType, String msg, Boolean showEvt=true, Map pushoverMap
 				if(settings?.pushoverEnabled && settings?.pushoverDevices) {
 					sentstr = "Pushover Message"
 					Map msgObj = [:]
-					msgObj = pushoverMap ?: [title: msgType, message: msg, priority: 0]
+					msgObj = pushoverMap ?: [title: msgType, message: msg, priority: (settings?.pushoverPriority?:0)]
 					if(settings?.pushoverSound) { msgObj?.sound = settings?.pushoverSound }
 					buildPushMessage(settings?.pushoverDevices, msgObj, true)
 					sent = true
@@ -1010,7 +1005,7 @@ def updateWebStuff(now = false) {
 
 def getWebFileData() {
 	//log.trace "getWebFileData..."
-	def params = [ uri: "https://raw.githubusercontent.com/tonesto7/efergy-manager/${gitBranch()}/resources/data/appParams.json", contentType: 'application/json' ]
+	def params = [ uri: "https://raw.githubusercontent.com/tonesto7/efergy-manager/master/resources/data/appParams.json", contentType: 'application/json' ]
 	def result = false
 	try {
 		httpGet(params) { resp ->
@@ -1036,7 +1031,7 @@ def getWebFileData() {
 }
 
 def broadcastCheck() {
-	if(atomicState?.isInstalled && atomicState?.appData.broadcast) {
+	if(atomicState?.appInstalled && atomicState?.appData.broadcast) {
 		if(atomicState?.appData?.broadcast?.msgId != null && atomicState?.lastBroadcastId != atomicState?.appData?.broadcast?.msgId) {
 			if(sendMsgNew(atomicState?.appData?.broadcast?.type.toString().capitalize(), atomicState?.appData?.broadcast?.message.toString(), null, null, null, true)) {
 				atomicState?.lastBroadcastId = atomicState?.appData?.broadcast?.msgId
@@ -1047,7 +1042,7 @@ def broadcastCheck() {
 
 def updateHandler() {
 	//log.trace "updateHandler..."
-	if(atomicState?.isInstalled) {
+	if(atomicState?.appInstalled) {
 		if(atomicState?.appData?.updater?.updateType.toString() == "critical" && atomicState?.lastCritUpdateInfo?.ver.toInteger() != atomicState?.appData?.updater?.updateVer.toInteger()) {
 			if(sendMsgNew("Critical", "There are Critical Updates available for the Efergy Manager Application!!! Please visit the IDE and make sure to update the App and Device Code...")) {
 				atomicState?.lastCritUpdateInfo = ["dt":getDtNow(), "ver":atomicState?.appData?.updater?.updateVer?.toInteger()]
@@ -1089,7 +1084,7 @@ def isCodeUpdateAvailable(newVer, curVer, type) {
 }
 
 def isAppUpdateAvail() {
-	if(isCodeUpdateAvailable(atomicState?.appData?.updater?.versions?.app?.ver, appVersion(), "manager")) { return true }
+	if(isCodeUpdateAvailable(atomicState?.appData?.updater?.versions?.app?.ver, appVer(), "manager")) { return true }
 	return false
 }
 
@@ -1438,20 +1433,8 @@ def appName() 		{ return "Efergy Manager" }
 def childDevName()  { return "Efergy Engage Elite" }
 def appAuthor() 	{ return "Anthony S." }
 def appNamespace() 	{ return "tonesto7" }
-def gitBranch()     { return "master" }
-def appInfoDesc() 	{ return "${textAppName()}\n• ${textVersion()}\n• ${textModified()}" }
-def textAppName()   { return "${appName()}" }
-def textVersion()   { return "Version: ${appVersion()}" }
-def textModified()  { return "Updated: ${appVerDate()}" }
-def textAuthor()    { return "${appAuthor()}" }
-def textNamespace() { return "${appNamespace()}" }
-def textVerInfo()   { return "${appVerInfo()}" }
-def textDonateLink(){ return "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=M88RC5J59BHTJ" }
-def stIdeLink()     { return "https://graph.api.smartthings.com" }
-def textCopyright() { return "Copyright© 2017 - Anthony S." }
-def textDesc()      { return "This app will handle the connection to Efergy Servers and generate an API token and create the energy device. It will also update the data automatically for you every 30 seconds" }
-def textHelp()      { return "" }
-def textLicense() {
+def donatationLink(){ return "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=M88RC5J59BHTJ" }
+def licenseText() {
 	return "Licensed under the Apache License, Version 2.0 (the 'License'); "+
 		"you may not use this file except in compliance with the License. "+
 		"You may obtain a copy of the License at"+
